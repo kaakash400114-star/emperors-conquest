@@ -6,21 +6,12 @@
     <title>Emperor's Conquest</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body {
-            width: 100%; height: 100%; overflow: hidden;
-            background: #1a0f0a;
-            touch-action: none;
-            user-select: none;
-            -webkit-user-select: none;
-        }
-        canvas {
-            display: block;
-            image-rendering: auto;
-        }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0604; }
+        canvas { display: block; cursor: pointer; }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
+    <canvas id="c"></canvas>
     <script type="module" src="src/main.js"></script>
 </body>
 </html>
