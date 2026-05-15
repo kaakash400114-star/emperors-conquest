@@ -41,11 +41,6 @@ export function resolveCombat(atkTroops, defTroops, atkEmpire, defEmpire, defTer
     atkBonus += (str.atkMod || 0);
     defBonus += (str.defMod || 0);
 
-    // Siege: ignore terrain defense bonus, halve fort bonus (instead of zeroing all defense)
-    if (str.ignoreDef) {
-        defBonus = Math.floor(fortBonus * 0.5);
-    }
-
     // ── Weapon bonuses (with diminishing returns) ──
     // effective = raw / (1 + raw * 0.15) — soft cap prevents weapons from dominating
     function effectiveBonus(raw) {
@@ -53,8 +48,16 @@ export function resolveCombat(atkTroops, defTroops, atkEmpire, defEmpire, defTer
         return raw / (1 + raw * 0.15);
     }
 
-    if (atkWeapon) atkBonus += effectiveBonus(atkWeapon.atk);
-    if (defWeapon) defBonus += effectiveBonus(defWeapon.def);
+    // ── Siege: ignore terrain defense, halve fort bonus, keep empire/weapon/strategy bonuses ──
+    if (str.ignoreDef) {
+        // Strip terrain defense from defBonus, keep empire + strategy bonuses
+        defBonus = defBonus - defTerritory.def + Math.floor(fortBonus * 0.5);
+        if (defWeapon) defBonus += effectiveBonus(defWeapon.def);
+        if (atkWeapon) atkBonus += effectiveBonus(atkWeapon.atk);
+    } else {
+        if (atkWeapon) atkBonus += effectiveBonus(atkWeapon.atk);
+        if (defWeapon) defBonus += effectiveBonus(defWeapon.def);
+    }
 
     // ── Cap total bonuses at +4 per side ──
     atkBonus = Math.min(atkBonus, 4);

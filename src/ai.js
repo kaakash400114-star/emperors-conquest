@@ -27,6 +27,13 @@ export class AI {
         const my = emp.tids;
         if (!my.length) return actions;
 
+        // ── Threat assessment: is any empire getting too strong? ──
+        const playerTids = this.g.empires[this.g.player]?.tids?.length || 0;
+        const ourTids = my.length;
+        const totalTids = TERRITORIES.length;
+        const playerDominant = playerTids > totalTids * 0.4; // Player has >40% of map
+        const playerNearWin = playerTids > totalTids * 0.6;  // Player has >60% — emergency!
+
         const borders = my.filter(id => T(id).adj.some(a => this.g.ts[a]?.owner !== this.eid));
         const interior = my.filter(id => !borders.includes(id));
 
@@ -38,12 +45,12 @@ export class AI {
         }
 
         // ── 2. Upgrade weapons if cost-effective ──
-        // Prioritize weapon upgrades that give the best power-per-coin ratio
+        // In late game or when player is dominant, be more aggressive with upgrades
+        const upgradeReserve = (playerDominant || playerNearWin) ? 0 : 10;
         for (const tier of [2, 3, 4]) {
             const costs = { 2: 25, 3: 50, 4: 80 };
-            if (emp.coins >= costs[tier] && !emp.weapons.has(tier)) {
-                // Only upgrade if we have enough borders to benefit
-                if (borders.length >= 1 && emp.coins >= costs[tier] + 10) {
+            if (emp.coins >= costs[tier] + upgradeReserve && !emp.weapons.has(tier)) {
+                if (borders.length >= 1) {
                     emp.coins -= costs[tier];
                     emp.weapons.add(tier);
                     actions.push({ type: 'weaponUpgrade', empire: this.eid, tier });
@@ -61,7 +68,9 @@ export class AI {
             for (const a of T(t).adj) {
                 const es = this.g.ts[a];
                 if (es && es.owner !== this.eid) {
-                    threat += es.troops;
+                    // Prioritize threats from dominant player
+                    const weight = (es.owner === this.g.player && playerDominant) ? 2.0 : 1.0;
+                    threat += es.troops * weight;
                 }
             }
             borderThreat.set(t, threat);
@@ -72,15 +81,18 @@ export class AI {
 
         let bi = 0;
         // Reserve some coins for weapons if we don't have tier 2 yet
-        const reserveForWeapons = !emp.weapons.has(2) ? 25 : 0;
-        while (emp.coins >= cost + reserveForWeapons && sortedBorders.length) {
+        const reserveForWeapons = (!emp.weapons.has(2) && !playerDominant) ? 25 : 0;
+        if (sortedBorders.length === 0) return actions; // FIX: no borders = no recruitment
+
+        // When player is near winning, spend ALL coins on troops (emergency mode)
+        const maxRecruitLoops = playerNearWin ? sortedBorders.length * 4 : sortedBorders.length * 2;
+        while (emp.coins >= cost + reserveForWeapons) {
             const t = sortedBorders[bi % sortedBorders.length];
             this.g.ts[t].troops++;
             emp.coins -= cost;
             actions.push({ type: 'recruit', empire: this.eid, territory: t });
             bi++;
-            // Stop recruiting if we have enough troops on all borders
-            if (bi > sortedBorders.length * 2) break;
+            if (bi > maxRecruitLoops) break;
         }
 
         // ── 4. Move interior troops to front lines ──
@@ -186,9 +198,11 @@ export class AI {
         // Sort by score (highest first) — prefer high-value, low-risk targets
         attackTargets.sort((a, b) => b.score - a.score);
 
-        // Execute attacks (up to 4 per turn for aggressive play)
+        // Execute attacks (up to 4 per turn, more when player is dominant)
+        const playerTids2 = this.g.empires[this.g.player]?.tids?.length || 0;
+        const playerDominant2 = playerTids2 > TERRITORIES.length * 0.4;
         let attacksExecuted = 0;
-        const maxAttacks = 4;
+        const maxAttacks = playerDominant2 ? 6 : 4;
         for (const target of attackTargets) {
             if (attacksExecuted >= maxAttacks) break;
             const { from, to, strategy } = target;
@@ -244,13 +258,20 @@ export class AI {
         const dst = this.g.ts[to];
         const defEmpire = dst.owner ? this.g.empires[dst.owner] : null;
 
+        // Threat-based threshold adjustment
+        const playerTids = this.g.empires[this.g.player]?.tids?.length || 0;
+        const totalTids = TERRITORIES.length;
+        const playerDominant = playerTids > totalTids * 0.4;
+        const attackingPlayer = dst.owner === this.g.player;
+
         let score = 0;
 
         // ── Troop advantage check ──
         const troopRatio = atkTroops / Math.max(1, defTroops);
-        const diffThreshold = this.g.difficulty === 'easy' ? 1.8 : (this.g.difficulty === 'hard' ? 1.0 : 1.3);
+        // Be more aggressive when player is dominant or attacking the dominant player
+        let diffThreshold = this.g.difficulty === 'easy' ? 1.8 : (this.g.difficulty === 'hard' ? 1.0 : 1.3);
+        if (playerDominant && attackingPlayer) diffThreshold *= 0.7; // 30% more aggressive vs dominant player
         if (troopRatio < diffThreshold) {
-            // Don't attack unless we have significant advantage
             return { shouldAttack: false, score: 0, strategy: STRATEGIES[0] };
         }
 
@@ -298,6 +319,11 @@ export class AI {
         // Prefer attacking weak empires (fewer territories)
         if (defEmpire && defEmpire.tids.length <= 2) {
             score += 8; // Almost eliminated — finish them!
+        }
+
+        // Coalition behavior: bonus for attacking the dominant player
+        if (attackingPlayer && playerDominant) {
+            score += 6; // Coordinate against the threat
         }
 
         // Prefer territories with higher strategic value (more connections)

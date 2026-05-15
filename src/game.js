@@ -91,6 +91,13 @@ export class Game {
     _update(dt) {
         this.hover = this.renderer.terrAt(this.input.hoverX, this.input.hoverY);
 
+        // Cursor: pointer when hovering over clickable territory
+        const canvas = document.getElementById('gc');
+        if (canvas) {
+            const showPointer = this.hover >= 0 && this.state === 'playing' && !this._isAI();
+            canvas.style.cursor = showPointer ? 'pointer' : 'default';
+        }
+
         if (this.state === 'menu') this._upMenu();
         else if (this.state === 'empireSelect') this._upEmpire();
         else if (this.state === 'playing') this._upPlay();
@@ -147,9 +154,19 @@ export class Game {
     // ── EMPIRE SELECT ─────────────────────────────────────────
     _upEmpire() {
         if (!this.input.hasClick()) return;
-        this.input.consumeClick();
         const sx = this.input.sx, sy = this.input.sy;
-        const cols = 5, cw = Math.min(155, (this.W - 50) / cols), ch = 155, gap = 6;
+
+        // FIX: Check buttons first (Back button from renderer)
+        for (const b of this.btns) {
+            if (b.rect && sx >= b.rect.x && sx <= b.rect.x + b.rect.w && sy >= b.rect.y && sy <= b.rect.y + b.rect.h) {
+                this.input.consumeClick();
+                b.fn();
+                return;
+            }
+        }
+
+        this.input.consumeClick();
+        const cols = 5, cw = Math.min(160, (this.W - 50) / cols), ch = 160, gap = 6;
         const rows = Math.ceil(EIDS.length / cols);
         const totalW = cw * cols + gap * (cols - 1);
         const startX = (this.W - totalW) / 2;
@@ -401,6 +418,9 @@ export class Game {
         this._log(`Battle! You ${res.conquered ? 'CONQUERED' : 'lost'} ${T(to).name}. +${res.coins} coins`);
 
         if (res.conquered) {
+            // FIX: Save defender color BEFORE changing ownership
+            const defColor = defS.owner ? E(defS.owner).color : '#444';
+
             // Handle defender losing territory
             if (defS.owner && this.empires[defS.owner]) {
                 this.empires[defS.owner].tids = this.empires[defS.owner].tids.filter(t => t !== to);
@@ -422,7 +442,7 @@ export class Game {
             this.stats.conquered++;
             this.sfx.capture();
             this.renderer.particles.push(...this._makeParticles(to, E(this.player).light));
-            this.renderer.addCaptureAnim(to, E(this.player).color, defEmp ? E(defS.owner).color : '#444');
+            this.renderer.addCaptureAnim(to, E(this.player).color, defColor);
             if (emp.tids.length === TERRITORIES.length) {
                 this.state = 'victory';
                 this.sfx.victory();
@@ -685,7 +705,7 @@ export class Game {
 
     phaseMsg() {
         if (this._isAI()) return 'AI empires are taking their turns...';
-        if (this.state === 'moveDialog') return `Move troops from ${T(this.moveFrom).name} to ${T(this.moveTo).name}`;
+        if (this.state === 'moveDialog') return this.moveFrom != null && this.moveTo != null ? `Move troops from ${T(this.moveFrom).name} to ${T(this.moveTo).name}` : 'Move troops';
         if (this.phase === 'select') return this.sel != null ? `Selected: ${T(this.sel).name} (${this.ts[this.sel].troops} troops)` : 'Click your territory to select it';
         if (this.phase === 'move') return this.sel != null ? `Moving from ${T(this.sel).name} — click a green territory` : 'Select a territory first';
         if (this.phase === 'attack') return this.sel != null ? `Attack from ${T(this.sel).name} — click a red enemy territory` : 'Select a territory first';
@@ -800,6 +820,7 @@ export class Game {
             this.aiQ = []; this.aiIdx = -1; this.aiTimer = 0;
             this.battle = null;
             this._attackTarget = null;
+            this.undoStack = []; // FIX: Clear undo stack on load
             this._log('Game loaded! Continuing...');
             this.sfx.buy();
             return true;

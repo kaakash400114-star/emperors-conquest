@@ -9,7 +9,7 @@ export const TERRITORIES = [
   // East Asia (right side)
   { id:0,  name:'Indus Valley',   cx:680, cy:340, terrain:'desert',      def:0, adj:[1,2,4],
     poly:[[640,310],[710,310],[720,340],[710,375],[660,380],[630,360]] },
-  { id:1,  name:'Ganges',         cx:790, cy:380, terrain:'plains',      def:0, adj:[0,2],
+  { id:1,  name:'Ganges',         cx:790, cy:380, terrain:'plains',      def:0, adj:[0,2,17],
     poly:[[750,345],[830,345],[840,385],[830,420],[760,420],[740,385]] },
   { id:2,  name:'Persia',         cx:600, cy:280, terrain:'desert',      def:1, adj:[0,1,3,4,6],
     poly:[[545,250],[660,250],[660,305],[630,330],[570,330],[535,300]] },
@@ -35,9 +35,9 @@ export const TERRITORIES = [
     poly:[[250,85],[315,85],[320,125],[310,160],[260,165],[245,130]] },
   { id:12, name:'Germania',       cx:390, cy:160, terrain:'forest',      def:2, adj:[9,11,13,14,15],
     poly:[[350,130],[435,130],[440,175],[430,200],[360,205],[345,175]] },
-  { id:13, name:'Scandinavia',    cx:360, cy:60,  terrain:'mountains',   def:2, adj:[11,12,14,17],
+  { id:13, name:'Scandinavia',    cx:360, cy:60,  terrain:'mountains',   def:2, adj:[11,12,14],
     poly:[[325,30],[400,30],[405,75],[395,105],[340,110],[320,75]] },
-  { id:14, name:'Eastern Europe', cx:490, cy:160, terrain:'plains',      def:0, adj:[12,13,15,17],
+  { id:14, name:'Eastern Europe', cx:490, cy:160, terrain:'plains',      def:0, adj:[12,13,15],
     poly:[[455,130],[530,130],[535,175],[525,200],[465,205],[450,175]] },
   { id:15, name:'Balkans',        cx:440, cy:260, terrain:'mountains',   def:1, adj:[6,7,9,12,14],
     poly:[[405,230],[480,230],[485,265],[475,290],[415,295],[400,265]] },
@@ -45,7 +45,7 @@ export const TERRITORIES = [
   { id:16, name:'North Africa',   cx:350, cy:490, terrain:'coast',       def:1, adj:[5,10],
     poly:[[300,460],[405,460],[410,500],[395,535],[315,540],[295,505]] },
   // Far East (far right)
-  { id:17, name:'Japan',          cx:880, cy:220, terrain:'island',      def:1, adj:[14,13],
+  { id:17, name:'Japan',          cx:880, cy:220, terrain:'island',      def:1, adj:[1],
     poly:[[850,185],[915,185],[920,225],[910,260],[855,265],[845,230]] },
 ];
 
@@ -92,9 +92,7 @@ export const EMPIRES = {
 
 export const EIDS = Object.keys(EMPIRES);
 
-// FIX: Mongolia now starts at territory 3 (Mesopotamia) instead of 14 (Eastern Europe)
-// to avoid conflict with Russia which starts at [13,14].
-// Japan [17] now connects to both [14] and [13] (Scandinavia) for better reachability.
+  // FIX: Japan now connects to Ganges [1] (Asian sea route) instead of Eastern Europe [14] / Scandinavia [13]
 export const STARTS = {
   maurya:  { t:[0,1],       troops:[6,4] },
   roman:   { t:[8],         troops:[7] },
