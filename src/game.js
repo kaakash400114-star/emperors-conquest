@@ -433,6 +433,7 @@ export class Game {
         }
 
         this.state = 'battle';
+        this.phase = 'select';
         this.sel = null;
         this._attackTarget = null;
     }
@@ -685,9 +686,9 @@ export class Game {
     phaseMsg() {
         if (this._isAI()) return 'AI empires are taking their turns...';
         if (this.state === 'moveDialog') return `Move troops from ${T(this.moveFrom).name} to ${T(this.moveTo).name}`;
-        if (this.phase === 'select') return this.sel ? `Selected: ${T(this.sel).name} (${this.ts[this.sel].troops} troops)` : 'Click your territory to select it';
-        if (this.phase === 'move') return `Moving from ${T(this.sel).name} — click a green territory`;
-        if (this.phase === 'attack') return `Attack from ${T(this.sel).name} — click a red enemy territory`;
+        if (this.phase === 'select') return this.sel != null ? `Selected: ${T(this.sel).name} (${this.ts[this.sel].troops} troops)` : 'Click your territory to select it';
+        if (this.phase === 'move') return this.sel != null ? `Moving from ${T(this.sel).name} — click a green territory` : 'Select a territory first';
+        if (this.phase === 'attack') return this.sel != null ? `Attack from ${T(this.sel).name} — click a red enemy territory` : 'Select a territory first';
         return '';
     }
 
