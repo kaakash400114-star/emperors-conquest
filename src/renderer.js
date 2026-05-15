@@ -7,6 +7,7 @@ export class Renderer {
         this.scale = 1; this.ox = 0; this.oy = 0;
         this.shake = 0;
         this.particles = [];
+        this.captureAnims = [];
         this.time = 0;
     }
 
@@ -85,13 +86,29 @@ export class Renderer {
         c.textAlign = 'center'; c.textBaseline = 'middle';
         c.fillText('How to Play', hbX + hbW/2, hbY + hbH/2);
 
+        // Continue button (if save exists)
+        const hasSave = !!localStorage.getItem('emperorsConquest_save');
+        if (hasSave) {
+            const ctW = 130, ctH = 36, ctX = W - 30 - ctW, ctY = H*0.82 - 20;
+            this.g._continueBtnRect = { x: ctX, y: ctY, w: ctW, h: ctH };
+            c.fillStyle = '#1a100a';
+            this._rr(c, ctX, ctY, ctW, ctH, 6); c.fill();
+            c.strokeStyle = '#2ecc71'; c.lineWidth = 1.5;
+            this._rr(c, ctX, ctY, ctW, ctH, 6); c.stroke();
+            c.fillStyle = '#2ecc71'; c.font = 'bold 13px "Segoe UI", sans-serif';
+            c.textAlign = 'center'; c.textBaseline = 'middle';
+            c.fillText('Continue', ctX + ctW/2, ctY + ctH/2);
+        } else {
+            this.g._continueBtnRect = null;
+        }
+
         if (Math.floor(this.time / 30) % 2 === 0) {
             c.fillStyle = '#ffd700'; c.font = 'bold 24px Georgia, serif';
             c.fillText('Click anywhere to begin', W/2, H*0.82);
         }
 
         c.fillStyle = '#444'; c.font = '12px "Segoe UI", sans-serif';
-        c.fillText('v3.0 — Turn-Based Strategy', W/2, H*0.95);
+        c.fillText('v3.1 — Save/Load & Difficulty Selection', W/2, H*0.95);
     }
 
     // ── EMPIRE SELECT ─────────────────────────────────────────
@@ -197,6 +214,122 @@ export class Renderer {
         c.fillText('Click anywhere to close', px + pw/2, py + ph - 20);
     }
 
+    // ── DIFFICULTY SCREEN ──────────────────────────────────────
+    _difficultyScreen() {
+        const c = this.ctx, { W, H } = this.g;
+        const g = this.g;
+
+        c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillStyle = '#ffd700'; c.font = 'bold 38px Georgia, serif';
+        c.fillText('Select Difficulty', W/2, H*0.18);
+        c.fillStyle = '#b8860b'; c.font = '18px Georgia, serif';
+        c.fillText('Choose your challenge level', W/2, H*0.18 + 40);
+
+        c.strokeStyle = '#4a3525'; c.lineWidth = 1;
+        c.beginPath(); c.moveTo(W*0.3, H*0.27); c.lineTo(W*0.7, H*0.27); c.stroke();
+
+        g.btns = [];
+
+        const diffs = [
+            {
+                label: 'Easy', color: '#2ecc71', border: '#27ae60', bg: '#0a1a10',
+                desc: 'AI earns 60% income, attacks cautiously',
+                detail: 'AI starts with fewer troops. Good for learning.',
+                icon: '\u2694',
+            },
+            {
+                label: 'Normal', color: '#ffd700', border: '#b8860b', bg: '#1a1505',
+                desc: 'Balanced gameplay',
+                detail: 'Standard experience. AI plays fairly.',
+                icon: '\u265A',
+            },
+            {
+                label: 'Hard', color: '#e74c3c', border: '#c0392b', bg: '#1a0a05',
+                desc: 'AI earns 140% income, attacks aggressively',
+                detail: 'AI starts with extra troops. For veterans only.',
+                icon: '\u2620',
+            },
+        ];
+
+        const btnW = 220, btnH = 180, gap = 30;
+        const totalW = btnW * 3 + gap * 2;
+        const startX = (W - totalW) / 2;
+        const startY = H * 0.33;
+
+        for (let i = 0; i < diffs.length; i++) {
+            const d = diffs[i];
+            const bx = startX + i * (btnW + gap);
+            const by = startY;
+            const hover = g.input.hoverX >= bx && g.input.hoverX <= bx + btnW &&
+                          g.input.hoverY >= by && g.input.hoverY <= by + btnH;
+
+            // Button background
+            c.fillStyle = hover ? d.border : d.bg;
+            this._rr(c, bx, by, btnW, btnH, 10); c.fill();
+            c.strokeStyle = d.color; c.lineWidth = hover ? 2.5 : 1.5;
+            this._rr(c, bx, by, btnW, btnH, 10); c.stroke();
+
+            // Top color bar
+            c.fillStyle = d.color;
+            c.fillRect(bx + 1, by + 1, btnW - 2, 4);
+
+            // Icon
+            c.font = '36px serif';
+            c.fillStyle = d.color;
+            c.fillText(d.icon, bx + btnW/2, by + 40);
+
+            // Label
+            c.font = 'bold 22px Georgia, serif';
+            c.fillStyle = d.color;
+            c.fillText(d.label, bx + btnW/2, by + 72);
+
+            // Description
+            c.font = '12px "Segoe UI", sans-serif';
+            c.fillStyle = '#bbb';
+            c.fillText(d.desc, bx + btnW/2, by + 100);
+
+            // Detail
+            c.font = '11px "Segoe UI", sans-serif';
+            c.fillStyle = '#777';
+            c.fillText(d.detail, bx + btnW/2, by + 120);
+
+            // Hover glow
+            if (hover) {
+                c.fillStyle = d.color + '10';
+                this._rr(c, bx, by, btnW, btnH, 10); c.fill();
+            }
+
+            // Register button
+            const diffKey = d.label.toLowerCase();
+            const btn = { label: d.label, fn: () => {
+                g.difficulty = diffKey;
+                g.state = 'empireSelect';
+                g.sfx.click();
+            }};
+            btn.rect = { x: bx, y: by, w: btnW, h: btnH };
+            g.btns.push(btn);
+        }
+
+        // Back button
+        const bbW = 70, bbH = 28, bbX = 15, bbY = 15;
+        const backBtn = { label: 'Back', fn: () => { g.state = 'menu'; g.sfx.click(); } };
+        backBtn.rect = { x: bbX, y: bbY, w: bbW, h: bbH };
+        g.btns.push(backBtn);
+        c.fillStyle = '#444';
+        this._rr(c, bbX, bbY, bbW, bbH, 4); c.fill();
+        c.strokeStyle = '#666'; c.lineWidth = 1;
+        this._rr(c, bbX, bbY, bbW, bbH, 4); c.stroke();
+        c.fillStyle = '#fff'; c.font = 'bold 12px "Segoe UI", sans-serif';
+        c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillText('Back', bbX + bbW/2, bbY + bbH/2);
+
+        if (Math.floor(this.time / 30) % 2 === 0) {
+            c.fillStyle = '#ffd700'; c.font = 'bold 18px Georgia, serif';
+            c.textAlign = 'center';
+            c.fillText('Click a difficulty to continue', W/2, H*0.82);
+        }
+    }
+
     // ── GAME WORLD ────────────────────────────────────────────
     _world() {
         const c = this.ctx;
@@ -208,6 +341,7 @@ export class Renderer {
         this._connections();
         this._territories();
         this._drawParticles();
+        this._drawCaptureAnims();
         if (this.shake > 0.3) c.restore();
     }
 
@@ -371,6 +505,69 @@ export class Renderer {
         c.globalAlpha = 1;
     }
 
+    addCaptureAnim(tid, newColor, oldColor) {
+        const p = this.toScr(T(tid).cx, T(tid).cy);
+        const r = T_RADIUS * this.scale;
+        this.captureAnims.push({
+            tid, x: p.x, y: p.y, r,
+            newColor, oldColor,
+            progress: 0,
+            speed: 0.03,
+        });
+    }
+
+    _drawCaptureAnims() {
+        const c = this.ctx;
+        for (let i = this.captureAnims.length - 1; i >= 0; i--) {
+            const a = this.captureAnims[i];
+            a.progress += a.speed;
+
+            // Phase 1: Expanding ring pulse (0 to 0.5)
+            if (a.progress < 0.5) {
+                const t = a.progress / 0.5;
+                const ringR = a.r * (1 + t * 1.8);
+                const alpha = 0.7 * (1 - t);
+                c.beginPath();
+                c.arc(a.x, a.y, ringR, 0, Math.PI * 2);
+                c.strokeStyle = a.newColor;
+                c.globalAlpha = alpha;
+                c.lineWidth = 4 * this.scale;
+                c.stroke();
+                c.globalAlpha = 1;
+            }
+
+            // Phase 2: Converging rings (0.3 to 0.8)
+            if (a.progress > 0.3 && a.progress < 0.8) {
+                const t = (a.progress - 0.3) / 0.5;
+                const ringR = a.r * (2.5 - t * 1.5);
+                const alpha = 0.4 * (1 - t);
+                c.beginPath();
+                c.arc(a.x, a.y, ringR, 0, Math.PI * 2);
+                c.strokeStyle = a.newColor;
+                c.globalAlpha = alpha;
+                c.lineWidth = 2 * this.scale;
+                c.stroke();
+                c.globalAlpha = 1;
+            }
+
+            // Phase 3: Flash overlay (0.5 to 0.7)
+            if (a.progress > 0.5 && a.progress < 0.7) {
+                const t = (a.progress - 0.5) / 0.2;
+                const alpha = 0.3 * (1 - t);
+                c.beginPath();
+                c.arc(a.x, a.y, a.r, 0, Math.PI * 2);
+                c.fillStyle = a.newColor;
+                c.globalAlpha = alpha;
+                c.fill();
+                c.globalAlpha = 1;
+            }
+
+            if (a.progress >= 1) {
+                this.captureAnims.splice(i, 1);
+            }
+        }
+    }
+
     // ── HUD ───────────────────────────────────────────────────
     _hud() {
         const c = this.ctx, g = this.g, { W } = g;
@@ -410,6 +607,27 @@ export class Renderer {
         g.btns = [];
         if (g._isAI()) return;
 
+        // Save and Menu buttons in top bar
+        const smBtnW = 50, smBtnH = 22, smBtnY = 4;
+        const hudMenuBtnX = W - 15 - smBtnW;
+        const hudSaveBtnX = hudMenuBtnX - smBtnW - 6;
+        const hudMenuBtn = { label: 'Menu', fn: () => { g.state = 'menu'; g.sfx.click(); } };
+        hudMenuBtn.rect = { x: hudMenuBtnX, y: smBtnY, w: smBtnW, h: smBtnH };
+        g.btns.push(hudMenuBtn);
+        c.fillStyle = '#1a100a'; this._rr(c, hudMenuBtnX, smBtnY, smBtnW, smBtnH, 4); c.fill();
+        c.strokeStyle = '#666'; c.lineWidth = 1; this._rr(c, hudMenuBtnX, smBtnY, smBtnW, smBtnH, 4); c.stroke();
+        c.fillStyle = '#aaa'; c.font = 'bold 11px "Segoe UI", sans-serif';
+        c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillText('Menu', hudMenuBtnX + smBtnW/2, smBtnY + smBtnH/2);
+        const hudSaveBtn = { label: 'Save', fn: () => g.saveGame() };
+        hudSaveBtn.rect = { x: hudSaveBtnX, y: smBtnY, w: smBtnW, h: smBtnH };
+        g.btns.push(hudSaveBtn);
+        c.fillStyle = '#1a100a'; this._rr(c, hudSaveBtnX, smBtnY, smBtnW, smBtnH, 4); c.fill();
+        c.strokeStyle = '#ffd700'; c.lineWidth = 1; this._rr(c, hudSaveBtnX, smBtnY, smBtnW, smBtnH, 4); c.stroke();
+        c.fillStyle = '#ffd700'; c.font = 'bold 11px "Segoe UI", sans-serif';
+        c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillText('Save', hudSaveBtnX + smBtnW/2, smBtnY + smBtnH/2);
+
         const btnY = 55, btnH = 32, gap = 6;
         const hasSel = g.sel != null && g.ts[g.sel]?.owner === g.player;
         const hasAdjEnemy = hasSel && T(g.sel).adj.some(a => g.ts[a].owner !== g.player);
@@ -425,6 +643,7 @@ export class Renderer {
             { label: 'Shop', active: true, fn: () => { g.state = 'shop'; g.sfx.click(); } },
             { label: 'End Turn', active: true, fn: () => g.endTurn() },
             { label: 'Cancel', active: g.phase !== 'select', fn: () => { g.phase = 'select'; g.sfx.click(); } },
+            { label: `Undo (${g.undoStack.length})`, active: g.undoStack.length > 0 && !g._isAI(), fn: () => g._undo() },
         ];
 
         let x = 10;
@@ -443,6 +662,35 @@ export class Renderer {
             c.fillText(b.label, x + tw/2, btnY + btnH/2);
             x += tw + gap;
         }
+    }
+
+    // ── PROGRESS BAR ──────────────────────────────────────────
+    _progressBar() {
+        const c = this.ctx, g = this.g;
+        const emp = g.empires[g.player];
+        if (!emp) return;
+
+        const barX = 10, barY = 49, barW = g.W * 0.45, barH = 5;
+        const pct = emp.tids.length / TERRITORIES.length;
+
+        c.fillStyle = 'rgba(0,0,0,0.4)';
+        c.fillRect(barX, barY, barW, barH);
+
+        if (pct > 0) {
+            const fillW = Math.max(barH, barW * pct);
+            const gr = c.createLinearGradient(barX, 0, barX + fillW, 0);
+            gr.addColorStop(0, '#c0392b');
+            gr.addColorStop(0.5, '#ffd700');
+            gr.addColorStop(1, '#2ecc71');
+            c.fillStyle = gr;
+            c.fillRect(barX, barY, fillW, barH);
+        }
+
+        c.fillStyle = '#888';
+        c.font = '9px "Segoe UI", sans-serif';
+        c.textAlign = 'left';
+        c.textBaseline = 'middle';
+        c.fillText(`${emp.tids.length}/${TERRITORIES.length} (${Math.round(pct * 100)}%)`, barX + barW + 8, barY + barH / 2);
     }
 
     // ── EMPIRE SCOREBOARD PANEL (right side) ──────────────────
@@ -626,21 +874,22 @@ export class Renderer {
 
         if (g.state === 'menu') this._menu();
         else if (g.state === 'help') this._helpScreen();
+        else if (g.state === 'difficulty') this._difficultyScreen();
         else if (g.state === 'empireSelect') this._empSel();
         else if (g.state === 'playing') {
-            this._world(); this._hud(); this._scoreboard(); this._logPanel();
+            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._logPanel();
         }
         else if (g.state === 'moveDialog') {
-            this._world(); this._hud(); this._scoreboard(); this._moveDialog(); this._logPanel();
+            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._moveDialog(); this._logPanel();
         }
         else if (g.state === 'attack') {
-            this._world(); this._hud(); this._scoreboard(); this._attackPanel(); this._logPanel();
+            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._attackPanel(); this._logPanel();
         }
         else if (g.state === 'battle') {
-            this._world(); this._hud(); this._scoreboard(); this._battleOverlay(); this._logPanel();
+            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._battleOverlay(); this._logPanel();
         }
         else if (g.state === 'shop') {
-            this._world(); this._hud(); this._scoreboard(); this._shopPanel(); this._logPanel();
+            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._shopPanel(); this._logPanel();
         }
         else if (g.state === 'gameover') this._defeat();
         else if (g.state === 'victory') this._victory();

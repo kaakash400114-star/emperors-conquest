@@ -55,6 +55,12 @@ export class Game {
             totalTroops: 0,
         };
 
+        // Difficulty setting
+        this.difficulty = 'normal';
+
+        // Undo system
+        this.undoStack = [];
+
         // Kill tracking per empire (who eliminated whom)
         this.killLog = {};
 
@@ -94,6 +100,7 @@ export class Game {
         else if (this.state === 'gameover' || this.state === 'victory') this._upEnd();
         else if (this.state === 'help') this._upHelp();
         else if (this.state === 'moveDialog') this._upMoveDialog();
+        else if (this.state === 'difficulty') this._upDifficulty();
 
         this.input.endFrame();
     }
@@ -108,10 +115,33 @@ export class Game {
                 this.showHelp();
                 return;
             }
+            // Check Continue button
+            const cr = this._continueBtnRect;
+            if (cr && sx >= cr.x && sx <= cr.x + cr.w && sy >= cr.y && sy <= cr.y + cr.h) {
+                this.input.consumeClick();
+                if (this.loadGame()) {
+                    return;
+                }
+                return;
+            }
             this.input.consumeClick();
-            this.state = 'empireSelect';
+            this.state = 'difficulty';
             this.sfx.click();
         }
+    }
+
+    // ── DIFFICULTY SELECT ──────────────────────────────────────
+    _upDifficulty() {
+        if (!this.input.hasClick()) return;
+        const sx = this.input.sx, sy = this.input.sy;
+        for (const b of this.btns) {
+            if (b.rect && sx >= b.rect.x && sx <= b.rect.x + b.rect.w && sy >= b.rect.y && sy <= b.rect.y + b.rect.h) {
+                this.input.consumeClick();
+                b.fn();
+                return;
+            }
+        }
+        this.input.consumeClick();
     }
 
     // ── EMPIRE SELECT ─────────────────────────────────────────
@@ -169,6 +199,29 @@ export class Game {
             this.ts[parseInt(tid)].troops = troops;
         }
 
+        // Difficulty adjustments for AI starting troops
+        if (this.difficulty === 'easy') {
+            // AI troops -1 per starting territory (min 1)
+            for (const id of EIDS) {
+                if (id === this.player) continue;
+                const s = STARTS[id];
+                if (!s) continue;
+                for (let i = 0; i < s.t.length; i++) {
+                    this.ts[s.t[i]].troops = Math.max(1, s.troops[i] - 1);
+                }
+            }
+        } else if (this.difficulty === 'hard') {
+            // AI troops +2 per starting territory
+            for (const id of EIDS) {
+                if (id === this.player) continue;
+                const s = STARTS[id];
+                if (!s) continue;
+                for (let i = 0; i < s.t.length; i++) {
+                    this.ts[s.t[i]].troops = s.troops[i] + 2;
+                }
+            }
+        }
+
         this.state = 'playing';
         this.phase = 'select';
         this.sel = null;
@@ -185,12 +238,16 @@ export class Game {
         let inc = 3;
         const e = E(eid);
         for (const tid of emp.tids) {
-            const t = T(tid);
             inc += 1;
             if (e.bonusType === 'income') inc += 2;
-            if (e.bonusType === 'desert' && t.terrain === 'desert') inc += 3;
+            if (e.bonusType === 'desert' && T(tid).terrain === 'desert') inc += 3;
             if (e.bonusType === 'bonus') inc += 2;
             if (e.bonusType === 'warMachine') inc += 3;
+        }
+        // Difficulty modifier for AI
+        if (eid !== this.player) {
+            if (this.difficulty === 'easy') inc = Math.floor(inc * 0.6);
+            else if (this.difficulty === 'hard') inc = Math.floor(inc * 1.4);
         }
         emp.coins += inc;
         if (eid === this.player) {
@@ -270,6 +327,7 @@ export class Game {
     _moveDialogConfirm() {
         const mv = Math.min(this.moveAmount, this.ts[this.moveFrom].troops - 1);
         if (mv <= 0) { this.sfx.error(); return; }
+        this.undoStack.push({ action: 'move', from: this.moveFrom, to: this.moveTo, fromTroops: this.ts[this.moveFrom].troops, toTroops: this.ts[this.moveTo].troops });
         this.ts[this.moveFrom].troops -= mv;
         this.ts[this.moveTo].troops += mv;
         this._log(`Moved ${mv} troops: ${T(this.moveFrom).name} -> ${T(this.moveTo).name}`);
@@ -364,6 +422,7 @@ export class Game {
             this.stats.conquered++;
             this.sfx.capture();
             this.renderer.particles.push(...this._makeParticles(to, E(this.player).light));
+            this.renderer.addCaptureAnim(to, E(this.player).color, defEmp ? E(defS.owner).color : '#444');
             if (emp.tids.length === TERRITORIES.length) {
                 this.state = 'victory';
                 this.sfx.victory();
@@ -421,6 +480,7 @@ export class Game {
         const cost = this.player === 'russia' ? 5 : 10;
         const emp = this.empires[this.player];
         if (emp.coins < cost) { this.sfx.error(); this._log('Not enough coins!'); return; }
+        this.undoStack.push({ action: 'recruit', tid: this.sel, troops: this.ts[this.sel].troops, coins: emp.coins, stats: { ...this.stats } });
         emp.coins -= cost; this.ts[this.sel].troops++;
         this.stats.totalTroops++;
         this._log(`Recruited soldier at ${T(this.sel).name} (-${cost} coins)`);
@@ -431,6 +491,7 @@ export class Game {
         if (!this.sel || this.ts[this.sel].owner !== this.player) return;
         const emp = this.empires[this.player];
         if (emp.coins < 20) { this.sfx.error(); this._log('Not enough coins!'); return; }
+        this.undoStack.push({ action: 'veteran', tid: this.sel, troops: this.ts[this.sel].troops, coins: emp.coins, stats: { ...this.stats } });
         emp.coins -= 20; this.ts[this.sel].troops += 2;
         this.stats.totalTroops += 2;
         this._log(`Recruited 2 veterans at ${T(this.sel).name} (-20 coins)`);
@@ -441,6 +502,7 @@ export class Game {
         if (!this.sel || this.ts[this.sel].owner !== this.player) return;
         const emp = this.empires[this.player];
         if (emp.coins < 15) { this.sfx.error(); this._log('Not enough coins!'); return; }
+        this.undoStack.push({ action: 'fortify', tid: this.sel, fort: this.ts[this.sel].fort, coins: emp.coins });
         emp.coins -= 15; this.ts[this.sel].fort += 2;
         this._log(`Fortified ${T(this.sel).name} (+2 def permanently)`);
         this.sfx.buy();
@@ -451,6 +513,7 @@ export class Game {
         const cost = costs[tier];
         const emp = this.empires[this.player];
         if (emp.coins < cost) { this.sfx.error(); this._log('Not enough coins!'); return; }
+        this.undoStack.push({ action: 'weaponTier', tier, coins: emp.coins, weapons: new Set(emp.weapons) });
         emp.coins -= cost; emp.weapons.add(tier);
         this._log(`Unlocked Tier ${tier} weapons! (-${cost} coins)`);
         this.sfx.buy();
@@ -459,6 +522,7 @@ export class Game {
     _equipWeapon(tier, idx) {
         if (!this.sel || this.ts[this.sel].owner !== this.player) return;
         if (!this.empires[this.player].weapons.has(tier)) { this.sfx.error(); this._log('Weapon tier locked!'); return; }
+        this.undoStack.push({ action: 'equip', tid: this.sel, weapon: this.ts[this.sel].weapon });
         this.ts[this.sel].weapon = WEAPONS[tier][idx];
         this._log(`Equipped ${WEAPONS[tier][idx].name} at ${T(this.sel).name}`);
         this.sfx.click();
@@ -468,6 +532,7 @@ export class Game {
         const emp = this.empires[this.player];
         if (emp.spy) { this.sfx.error(); this._log('Spy network already active!'); return; }
         if (emp.coins < 30) { this.sfx.error(); this._log('Not enough coins!'); return; }
+        this.undoStack.push({ action: 'spy', coins: emp.coins });
         emp.coins -= 30; emp.spy = true;
         this._log('Spy network activated! Enemy troop counts revealed.');
         this.sfx.buy();
@@ -478,6 +543,7 @@ export class Game {
         this.sel = null;
         this.phase = 'select';
         this._attackTarget = null;
+        this.undoStack = [];
 
         // Build AI queue: only alive AI empires
         this.aiQ = [];
@@ -627,4 +693,127 @@ export class Game {
 
     empCoins() { return this.empires[this.player]?.coins || 0; }
     empTids() { return this.empires[this.player]?.tids || []; }
+
+    // ── UNDO ──────────────────────────────────────────────────
+    _undo() {
+        if (this.undoStack.length === 0) { this.sfx.error(); this._log('Nothing to undo!'); return; }
+        if (this._isAI()) { this.sfx.error(); return; }
+
+        const snap = this.undoStack.pop();
+        const emp = this.empires[this.player];
+
+        if (snap.action === 'recruit') {
+            this.ts[snap.tid].troops = snap.troops;
+            emp.coins = snap.coins;
+            this.stats = snap.stats;
+            this._log('Undid recruit.');
+        } else if (snap.action === 'veteran') {
+            this.ts[snap.tid].troops = snap.troops;
+            emp.coins = snap.coins;
+            this.stats = snap.stats;
+            this._log('Undid veteran recruit.');
+        } else if (snap.action === 'fortify') {
+            this.ts[snap.tid].fort = snap.fort;
+            emp.coins = snap.coins;
+            this._log('Undid fortify.');
+        } else if (snap.action === 'weaponTier') {
+            emp.coins = snap.coins;
+            emp.weapons = snap.weapons;
+            this._log('Undid weapon tier unlock.');
+        } else if (snap.action === 'equip') {
+            this.ts[snap.tid].weapon = snap.weapon;
+            this._log('Undid weapon equip.');
+        } else if (snap.action === 'spy') {
+            emp.coins = snap.coins;
+            emp.spy = false;
+            this._log('Undid spy network.');
+        } else if (snap.action === 'move') {
+            this.ts[snap.from].troops = snap.fromTroops;
+            this.ts[snap.to].troops = snap.toTroops;
+            this._log('Undid move.');
+        }
+
+        if (this.undoStack.length > 20) this.undoStack.shift();
+        this.sfx.click();
+    }
+
+    // ── SAVE / LOAD ────────────────────────────────────────────
+    saveGame() {
+        const data = {
+            player: this.player,
+            turn: this.turn,
+            empires: {},
+            ts: {},
+            stats: this.stats,
+            killLog: this.killLog,
+            difficulty: this.difficulty,
+        };
+        for (const [id, emp] of Object.entries(this.empires)) {
+            data.empires[id] = {
+                id: emp.id, coins: emp.coins, alive: emp.alive,
+                tids: [...emp.tids],
+                weapons: [...emp.weapons],
+                spy: emp.spy,
+            };
+        }
+        for (const [tid, s] of Object.entries(this.ts)) {
+            data.ts[tid] = { owner: s.owner, troops: s.troops, fort: s.fort, weapon: s.weapon ? s.weapon.name : 'Sword' };
+        }
+        localStorage.setItem('emperorsConquest_save', JSON.stringify(data));
+        this._log('Game saved!');
+        this.sfx.buy();
+    }
+
+    loadGame() {
+        const raw = localStorage.getItem('emperorsConquest_save');
+        if (!raw) { this.sfx.error(); return false; }
+        try {
+            const data = JSON.parse(raw);
+            this.player = data.player;
+            this.turn = data.turn;
+            this.difficulty = data.difficulty || 'normal';
+            this.stats = data.stats || { kills:0, conquered:0, coinsEarned:0, totalTroops:0 };
+            this.killLog = data.killLog || {};
+
+            // Restore empires
+            this.empires = {};
+            for (const [id, emp] of Object.entries(data.empires)) {
+                this.empires[id] = {
+                    id: emp.id, coins: emp.coins, alive: emp.alive,
+                    tids: emp.tids,
+                    weapons: new Set(emp.weapons),
+                    spy: emp.spy,
+                };
+            }
+
+            // Restore territory states — match weapon by name
+            this.ts = {};
+            for (const [tid, s] of Object.entries(data.ts)) {
+                const weapon = this._findWeaponByName(s.weapon);
+                this.ts[parseInt(tid)] = { owner: s.owner, troops: s.troops, fort: s.fort, weapon };
+            }
+
+            this.state = 'playing';
+            this.phase = 'select';
+            this.sel = null;
+            this.aiQ = []; this.aiIdx = -1; this.aiTimer = 0;
+            this.battle = null;
+            this._attackTarget = null;
+            this._log('Game loaded! Continuing...');
+            this.sfx.buy();
+            return true;
+        } catch(e) {
+            this.sfx.error();
+            return false;
+        }
+    }
+
+    _findWeaponByName(name) {
+        for (const [tier, weapons] of Object.entries(WEAPONS)) {
+            for (const w of weapons) {
+                if (w.name === name) return w;
+            }
+        }
+        return WEAPONS[1][0]; // default to Sword
+    }
 }

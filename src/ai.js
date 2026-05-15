@@ -211,6 +211,7 @@ export class AI {
             emp.coins += res.coins;
 
             if (res.conquered) {
+                const defEmpColor = dst.owner ? E(dst.owner).color : '#444';
                 if (dst.owner && this.g.empires[dst.owner]) {
                     this.g.empires[dst.owner].tids = this.g.empires[dst.owner].tids.filter(t => t !== to);
                     if (this.g.empires[dst.owner].tids.length === 0) {
@@ -223,6 +224,7 @@ export class AI {
                 dst.troops = res.atkLeft;
                 src.troops = 1;
                 emp.tids.push(to);
+                this.g.renderer.addCaptureAnim(to, E(this.eid).color, defEmpColor);
             } else {
                 dst.troops = res.defLeft;
             }
@@ -246,7 +248,8 @@ export class AI {
 
         // ── Troop advantage check ──
         const troopRatio = atkTroops / Math.max(1, defTroops);
-        if (troopRatio < 1.3) {
+        const diffThreshold = this.g.difficulty === 'easy' ? 1.8 : (this.g.difficulty === 'hard' ? 1.0 : 1.3);
+        if (troopRatio < diffThreshold) {
             // Don't attack unless we have significant advantage
             return { shouldAttack: false, score: 0, strategy: STRATEGIES[0] };
         }
