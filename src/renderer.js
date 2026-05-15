@@ -8,6 +8,7 @@ export class Renderer {
         this.shake = 0;
         this.particles = [];
         this.captureAnims = [];
+        this.combatAnim = null; // { phase, timer, from, to, atkEm, defEm, soldiers, sparks, ... }
         this.time = 0;
     }
 
@@ -848,6 +849,280 @@ export class Renderer {
         }
     }
 
+    // ── COMBAT ANIMATION (soldiers march & fight) ─────────────
+    startCombatAnim(fromTid, toTid, atkEmpire, defEmpire, conquered) {
+        const p1 = this.toScr(T(fromTid).cx, T(fromTid).cy);
+        const p2 = this.toScr(T(toTid).cx, T(toTid).cy);
+        const atkColor = EMPIRES[atkEmpire].color;
+        const defColor = defEmpire ? EMPIRES[defEmpire].color : '#888';
+        // Generate soldier positions for march phase
+        const atkSoldiers = [];
+        for (let i = 0; i < 6; i++) {
+            atkSoldiers.push({
+                offsetX: (Math.random() - 0.5) * 30,
+                offsetY: (Math.random() - 0.5) * 20,
+                phase: Math.random() * Math.PI * 2,
+                speed: 0.7 + Math.random() * 0.6,
+                alive: true,
+                retreatStart: 40 + Math.random() * 30,
+            });
+        }
+        const defSoldiers = [];
+        for (let i = 0; i < 5; i++) {
+            defSoldiers.push({
+                offsetX: (Math.random() - 0.5) * 30,
+                offsetY: (Math.random() - 0.5) * 20,
+                phase: Math.random() * Math.PI * 2,
+                speed: 0.7 + Math.random() * 0.6,
+                alive: true,
+                retreatStart: 50 + Math.random() * 25,
+            });
+        }
+        this.combatAnim = {
+            fromTid, toTid, atkEmpire, defEmpire, conquered,
+            p1, p2, atkColor, defColor,
+            atkSoldiers, defSoldiers,
+            sparks: [],
+            timer: 0,
+            phase: 'march', // march -> clash -> result
+            clashTimer: 0,
+            maxMarchFrames: 90,
+            maxClashFrames: 120,
+        };
+    }
+
+    _drawCombatAnim() {
+        const c = this.ctx, a = this.combatAnim;
+        if (!a) return;
+        a.timer++;
+
+        if (a.phase === 'march') {
+            // Phase 1: Attacker soldiers march toward defender territory
+            const progress = Math.min(a.timer / a.maxMarchFrames, 1);
+            const ease = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+            // Draw march line (dashed arrow)
+            c.save();
+            c.strokeStyle = a.atkColor + '60';
+            c.lineWidth = 3;
+            c.setLineDash([8, 6]);
+            c.beginPath();
+            c.moveTo(a.p1.x, a.p1.y);
+            const midX = a.p1.x + (a.p2.x - a.p1.x) * ease;
+            const midY = a.p1.y + (a.p2.y - a.p1.y) * ease;
+            c.lineTo(midX, midY);
+            c.stroke();
+            c.setLineDash([]);
+            c.restore();
+
+            // Draw marching attacker soldiers
+            for (const s of a.atkSoldiers) {
+                if (!s.alive) continue;
+                const sx = a.p1.x + (a.p2.x - a.p1.x) * ease * s.speed + s.offsetX * (1 - ease);
+                const sy = a.p1.y + (a.p2.y - a.p1.y) * ease * s.speed + s.offsetY * (1 - ease);
+                const bob = Math.sin(a.timer * 0.15 + s.phase) * 3;
+                this._drawSoldier(c, sx, sy + bob, a.atkColor, true, a.timer, s.phase);
+            }
+
+            // Draw defender soldiers waiting at their territory
+            for (const s of a.defSoldiers) {
+                if (!s.alive) continue;
+                const sx = a.p2.x + s.offsetX;
+                const sy = a.p2.y + s.offsetY;
+                const bob = Math.sin(a.timer * 0.08 + s.phase) * 1.5;
+                this._drawSoldier(c, sx, sy + bob, a.defColor, false, a.timer, s.phase);
+            }
+
+            // "ATTACKING!" text
+            c.save();
+            c.shadowColor = a.atkColor; c.shadowBlur = 10;
+            c.fillStyle = a.atkColor;
+            c.font = 'bold 22px Georgia, serif';
+            c.textAlign = 'center'; c.textBaseline = 'middle';
+            const txtX = (a.p1.x + a.p2.x) / 2, txtY = (a.p1.y + a.p2.y) / 2 - 30;
+            c.fillText('\u2694 ATTACKING! \u2694', txtX, txtY);
+            c.restore();
+
+            if (a.timer >= a.maxMarchFrames) {
+                a.phase = 'clash';
+                a.clashTimer = 0;
+            }
+
+        } else if (a.phase === 'clash') {
+            // Phase 2: Soldiers fight at the defender territory
+            a.clashTimer++;
+            const clashProgress = a.clashTimer / a.maxClashFrames;
+
+            // Background flash
+            if (a.clashTimer < 15) {
+                c.fillStyle = `rgba(255,100,50,${0.3 * (1 - a.clashTimer / 15)})`;
+                c.fillRect(0, 0, this.g.W, this.g.H);
+            }
+
+            // Spawn sparks
+            if (a.clashTimer % 4 === 0) {
+                for (let i = 0; i < 5; i++) {
+                    a.sparks.push({
+                        x: a.p2.x + (Math.random() - 0.5) * 60,
+                        y: a.p2.y + (Math.random() - 0.5) * 40,
+                        vx: (Math.random() - 0.5) * 8,
+                        vy: (Math.random() - 0.5) * 6 - 2,
+                        life: 30 + Math.random() * 20,
+                        color: Math.random() > 0.5 ? '#ffd700' : '#ff6b35',
+                        size: 2 + Math.random() * 4,
+                    });
+                }
+            }
+
+            // Draw and update sparks
+            for (let i = a.sparks.length - 1; i >= 0; i--) {
+                const sp = a.sparks[i];
+                sp.x += sp.vx; sp.y += sp.vy; sp.vy += 0.15; sp.life--;
+                if (sp.life <= 0) { a.sparks.splice(i, 1); continue; }
+                const alpha = sp.life / 50;
+                c.fillStyle = sp.color;
+                c.globalAlpha = alpha;
+                c.beginPath();
+                c.arc(sp.x, sp.y, sp.size * alpha, 0, Math.PI * 2);
+                c.fill();
+                // Spark trail
+                c.strokeStyle = sp.color;
+                c.lineWidth = 1;
+                c.beginPath();
+                c.moveTo(sp.x, sp.y);
+                c.lineTo(sp.x - sp.vx * 2, sp.y - sp.vy * 2);
+                c.stroke();
+            }
+            c.globalAlpha = 1;
+
+            // Attacking soldiers clash at defender position
+            for (const s of a.atkSoldiers) {
+                if (!s.alive) continue;
+                const sx = a.p2.x + s.offsetX + Math.sin(a.clashTimer * 0.2 + s.phase) * 8;
+                const sy = a.p2.y + s.offsetY + Math.sin(a.clashTimer * 0.3 + s.phase) * 4;
+                const swinging = Math.sin(a.clashTimer * 0.25 + s.phase) > 0;
+                this._drawSoldier(c, sx, sy, a.atkColor, swinging, a.timer, s.phase);
+            }
+
+            // Defender soldiers fighting back
+            for (const s of a.defSoldiers) {
+                if (!s.alive) continue;
+                // Some defenders "fall" during clash
+                if (a.clashTimer > s.retreatStart && !a.conquered) {
+                    // Defender still alive if not conquered
+                }
+                const sx = a.p2.x + s.offsetX - 15 + Math.sin(a.clashTimer * 0.18 + s.phase) * 6;
+                const sy = a.p2.y + s.offsetY + Math.cos(a.clashTimer * 0.22 + s.phase) * 4;
+                const swinging = Math.sin(a.clashTimer * 0.22 + s.phase + 1) > 0;
+                this._drawSoldier(c, sx, sy, a.defColor, swinging, a.timer, s.phase);
+            }
+
+            // "CLASH!" text with shake
+            c.save();
+            c.shadowColor = '#ff4444'; c.shadowBlur = 15;
+            c.fillStyle = '#ff4444';
+            c.font = 'bold 28px Georgia, serif';
+            c.textAlign = 'center'; c.textBaseline = 'middle';
+            const shakeX = (Math.random() - 0.5) * 4;
+            const shakeY = (Math.random() - 0.5) * 4;
+            c.fillText('\u2694 CLASH! \u2694', a.p2.x + shakeX, a.p2.y - 40 + shakeY);
+            c.restore();
+
+            // Show conquered or failed text near end
+            if (clashProgress > 0.7) {
+                const fadeIn = (clashProgress - 0.7) / 0.3;
+                c.save();
+                c.globalAlpha = fadeIn;
+                c.shadowColor = a.conquered ? '#ffd700' : '#e74c3c';
+                c.shadowBlur = 20;
+                c.fillStyle = a.conquered ? '#ffd700' : '#e74c3c';
+                c.font = 'bold 32px Georgia, serif';
+                c.textAlign = 'center'; c.textBaseline = 'middle';
+                c.fillText(a.conquered ? '\uD83C\uDFC6 CONQUERED!' : '\uD83D\uDEAB REPELSED!', this.g.W / 2, this.g.H / 2);
+                c.restore();
+            }
+
+            if (a.clashTimer >= a.maxClashFrames) {
+                a.phase = 'done';
+                // Show battle overlay now
+                this.g.state = 'battle';
+            }
+        }
+    }
+
+    _drawSoldier(c, x, y, color, swinging, time, phase) {
+        const sz = 10;
+        // Shadow
+        c.fillStyle = 'rgba(0,0,0,0.3)';
+        c.beginPath();
+        c.ellipse(x, y + sz * 1.2, sz * 0.5, sz * 0.2, 0, 0, Math.PI * 2);
+        c.fill();
+        // Legs
+        const legPhase = Math.sin(time * 0.15 + phase);
+        c.fillStyle = color + '99';
+        c.fillRect(x - sz * 0.25 + legPhase * 2, y + sz * 0.2, sz * 0.2, sz * 0.6);
+        c.fillRect(x + sz * 0.05 - legPhase * 2, y + sz * 0.2, sz * 0.2, sz * 0.6);
+        // Body (armor)
+        const bodyGr = c.createLinearGradient(x - sz * 0.4, y - sz * 0.6, x + sz * 0.4, y + sz * 0.2);
+        bodyGr.addColorStop(0, color); bodyGr.addColorStop(1, color + 'aa');
+        c.fillStyle = bodyGr;
+        c.fillRect(x - sz * 0.4, y - sz * 0.6, sz * 0.8, sz * 0.9);
+        // Belt
+        c.fillStyle = '#8b6914';
+        c.fillRect(x - sz * 0.4, y - sz * 0.05, sz * 0.8, sz * 0.15);
+        // Head with helmet
+        c.fillStyle = '#888';
+        c.beginPath();
+        c.arc(x, y - sz * 0.9, sz * 0.35, 0, Math.PI * 2);
+        c.fill();
+        // Helmet visor
+        c.fillStyle = '#555';
+        c.fillRect(x - sz * 0.25, y - sz * 1.0, sz * 0.5, sz * 0.15);
+        // Weapon (sword/spear)
+        c.strokeStyle = '#ccc';
+        c.lineWidth = 2;
+        if (swinging) {
+            // Sword swinging
+            const swingAngle = Math.sin(time * 0.3 + phase) * 0.8;
+            c.save();
+            c.translate(x + sz * 0.5, y - sz * 0.3);
+            c.rotate(swingAngle - 0.5);
+            c.beginPath();
+            c.moveTo(0, 0);
+            c.lineTo(sz * 1.5, -sz * 0.3);
+            c.stroke();
+            // Sword tip
+            c.fillStyle = '#ffd700';
+            c.beginPath();
+            c.arc(sz * 1.5, -sz * 0.3, 2, 0, Math.PI * 2);
+            c.fill();
+            c.restore();
+        } else {
+            // Spear held upright
+            c.beginPath();
+            c.moveTo(x + sz * 0.4, y + sz * 0.1);
+            c.lineTo(x + sz * 0.4, y - sz * 1.8);
+            c.stroke();
+            // Spear tip
+            c.fillStyle = '#aaa';
+            c.beginPath();
+            c.moveTo(x + sz * 0.4, y - sz * 1.8);
+            c.lineTo(x + sz * 0.3, y - sz * 1.5);
+            c.lineTo(x + sz * 0.5, y - sz * 1.5);
+            c.closePath();
+            c.fill();
+        }
+        // Shield
+        c.fillStyle = color + 'cc';
+        c.beginPath();
+        c.ellipse(x - sz * 0.5, y - sz * 0.2, sz * 0.3, sz * 0.4, 0, 0, Math.PI * 2);
+        c.fill();
+        c.strokeStyle = '#ffd700'; c.lineWidth = 1;
+        c.beginPath();
+        c.ellipse(x - sz * 0.5, y - sz * 0.2, sz * 0.3, sz * 0.4, 0, 0, Math.PI * 2);
+        c.stroke();
+    }
+
     _territories() {
         const c = this.ctx, g = this.g;
         for (const t of TERRITORIES) {
@@ -1586,6 +1861,9 @@ export class Renderer {
         }
         else if (g.state === 'attack') {
             this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._attackPanel(); this._logPanel();
+        }
+        else if (g.state === 'combat') {
+            this._world(); this._drawCombatAnim(); this._hud(); this._progressBar(); this._logPanel();
         }
         else if (g.state === 'battle') {
             this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._battleOverlay(); this._logPanel();

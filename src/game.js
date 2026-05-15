@@ -102,6 +102,7 @@ export class Game {
         else if (this.state === 'empireSelect') this._upEmpire();
         else if (this.state === 'playing') this._upPlay();
         else if (this.state === 'attack') this._upAttack();
+        else if (this.state === 'combat') { /* animation plays, clicks ignored */ }
         else if (this.state === 'battle') this._upBattle();
         else if (this.state === 'shop') this._upShop();
         else if (this.state === 'gameover' || this.state === 'victory') this._upEnd();
@@ -409,6 +410,10 @@ export class Game {
         this.renderer.shake = res.conquered ? 10 : 5;
         this.sfx.battle(); this.sfx.dice();
 
+        // Start combat animation instead of showing results immediately
+        this.state = 'combat';
+        this.renderer.startCombatAnim(from, to, this.player, defS.owner, res.conquered);
+
         // Apply results
         atkS.troops = res.atkLeft;
         emp.coins += res.coins;
@@ -452,7 +457,7 @@ export class Game {
             defS.troops = res.defLeft;
         }
 
-        this.state = 'battle';
+        // state is already 'combat' (set above), animation will transition to 'battle'
         this.phase = 'select';
         this.sel = null;
         this._attackTarget = null;
