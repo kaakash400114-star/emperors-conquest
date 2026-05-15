@@ -3,33 +3,69 @@
  * Pure data, no logic. Add new content here.
  */
 
-export const MAP_W = 960, MAP_H = 640, T_RADIUS = 28;
+export const MAP_W = 960, MAP_H = 640, T_RADIUS = 0;
 
 export const TERRITORIES = [
   // East Asia (right side)
-  { id:0,  name:'Indus Valley',   cx:680, cy:340, terrain:'desert',      def:0, adj:[1,2,4] },
-  { id:1,  name:'Ganges',         cx:790, cy:380, terrain:'plains',      def:0, adj:[0,2] },
-  { id:2,  name:'Persia',         cx:600, cy:280, terrain:'desert',      def:1, adj:[0,1,3,4,6] },
-  { id:3,  name:'Mesopotamia',    cx:555, cy:340, terrain:'plains',      def:0, adj:[2,4,6,10] },
-  { id:4,  name:'Arabia',         cx:570, cy:430, terrain:'desert',      def:1, adj:[0,2,3,5] },
-  { id:5,  name:'Egypt',          cx:480, cy:460, terrain:'desert',      def:0, adj:[4,7,16] },
+  { id:0,  name:'Indus Valley',   cx:680, cy:340, terrain:'desert',      def:0, adj:[1,2,4],
+    poly:[[640,310],[710,310],[720,340],[710,375],[660,380],[630,360]] },
+  { id:1,  name:'Ganges',         cx:790, cy:380, terrain:'plains',      def:0, adj:[0,2],
+    poly:[[750,345],[830,345],[840,385],[830,420],[760,420],[740,385]] },
+  { id:2,  name:'Persia',         cx:600, cy:280, terrain:'desert',      def:1, adj:[0,1,3,4,6],
+    poly:[[545,250],[660,250],[660,305],[630,330],[570,330],[535,300]] },
+  { id:3,  name:'Mesopotamia',    cx:555, cy:340, terrain:'plains',      def:0, adj:[2,4,6,10],
+    poly:[[520,310],[590,310],[600,345],[590,375],[530,380],[510,350]] },
+  { id:4,  name:'Arabia',         cx:570, cy:430, terrain:'desert',      def:1, adj:[0,2,3,5],
+    poly:[[530,390],[620,390],[630,435],[610,470],[540,475],[520,440]] },
+  { id:5,  name:'Egypt',          cx:480, cy:460, terrain:'desert',      def:0, adj:[4,7,16],
+    poly:[[445,430],[520,430],[525,470],[510,500],[450,505],[435,470]] },
   // Mediterranean & Europe (center)
-  { id:6,  name:'Anatolia',       cx:520, cy:240, terrain:'mountains',   def:2, adj:[2,3,7,8,10,15] },
-  { id:7,  name:'Greece',         cx:470, cy:300, terrain:'coast',       def:1, adj:[5,6,8,15] },
-  { id:8,  name:'Italia',         cx:420, cy:340, terrain:'coast',       def:0, adj:[6,7,9,10] },
-  { id:9,  name:'Gaul',           cx:340, cy:230, terrain:'plains',      def:0, adj:[8,10,11,12,15] },
-  { id:10, name:'Hispania',       cx:310, cy:380, terrain:'peninsula',   def:1, adj:[3,6,8,9,16] },
+  { id:6,  name:'Anatolia',       cx:520, cy:240, terrain:'mountains',   def:2, adj:[2,3,7,8,10,15],
+    poly:[[475,210],[570,210],[575,255],[560,275],[490,280],[470,255]] },
+  { id:7,  name:'Greece',         cx:470, cy:300, terrain:'coast',       def:1, adj:[5,6,8,15],
+    poly:[[445,270],[500,270],[505,310],[490,335],[450,340],[435,310]] },
+  { id:8,  name:'Italia',         cx:420, cy:340, terrain:'coast',       def:0, adj:[6,7,9,10],
+    poly:[[395,310],[450,310],[455,350],[445,380],[405,385],[390,355]] },
+  { id:9,  name:'Gaul',           cx:340, cy:230, terrain:'plains',      def:0, adj:[8,10,11,12,15],
+    poly:[[295,200],[390,200],[395,245],[385,270],[310,275],[290,245]] },
+  { id:10, name:'Hispania',       cx:310, cy:380, terrain:'peninsula',   def:1, adj:[3,6,8,9,16],
+    poly:[[270,345],[355,345],[360,390],[345,425],[280,430],[265,395]] },
   // Northern Europe (top center)
-  { id:11, name:'Britannia',      cx:280, cy:120, terrain:'island',      def:1, adj:[9,12,13] },
-  { id:12, name:'Germania',       cx:390, cy:160, terrain:'forest',      def:2, adj:[9,11,13,14,15] },
-  { id:13, name:'Scandinavia',    cx:360, cy:60,  terrain:'mountains',   def:2, adj:[11,12,14,17] },
-  { id:14, name:'Eastern Europe', cx:490, cy:160, terrain:'plains',      def:0, adj:[12,13,15,17] },
-  { id:15, name:'Balkans',        cx:440, cy:260, terrain:'mountains',   def:1, adj:[6,7,9,12,14] },
+  { id:11, name:'Britannia',      cx:280, cy:120, terrain:'island',      def:1, adj:[9,12,13],
+    poly:[[250,85],[315,85],[320,125],[310,160],[260,165],[245,130]] },
+  { id:12, name:'Germania',       cx:390, cy:160, terrain:'forest',      def:2, adj:[9,11,13,14,15],
+    poly:[[350,130],[435,130],[440,175],[430,200],[360,205],[345,175]] },
+  { id:13, name:'Scandinavia',    cx:360, cy:60,  terrain:'mountains',   def:2, adj:[11,12,14,17],
+    poly:[[325,30],[400,30],[405,75],[395,105],[340,110],[320,75]] },
+  { id:14, name:'Eastern Europe', cx:490, cy:160, terrain:'plains',      def:0, adj:[12,13,15,17],
+    poly:[[455,130],[530,130],[535,175],[525,200],[465,205],[450,175]] },
+  { id:15, name:'Balkans',        cx:440, cy:260, terrain:'mountains',   def:1, adj:[6,7,9,12,14],
+    poly:[[405,230],[480,230],[485,265],[475,290],[415,295],[400,265]] },
   // Africa (bottom left)
-  { id:16, name:'North Africa',   cx:350, cy:490, terrain:'coast',       def:1, adj:[5,10] },
+  { id:16, name:'North Africa',   cx:350, cy:490, terrain:'coast',       def:1, adj:[5,10],
+    poly:[[300,460],[405,460],[410,500],[395,535],[315,540],[295,505]] },
   // Far East (far right)
-  { id:17, name:'Japan',          cx:880, cy:220, terrain:'island',      def:1, adj:[14,13] },
+  { id:17, name:'Japan',          cx:880, cy:220, terrain:'island',      def:1, adj:[14,13],
+    poly:[[850,185],[915,185],[920,225],[910,260],[855,265],[845,230]] },
 ];
+
+// Background map polygons — ocean + land masses for ancient world look
+export const MAP_BG = {
+  ocean: [[0,0],[960,0],[960,640],[0,640]],
+  // Major land masses (drawn on top of ocean)
+  lands: [
+    // Europe mainland
+    [[240,25],[540,25],[545,210],[575,210],[575,275],[505,340],[490,340],[490,380],[455,385],[445,430],[525,430],[530,475],[410,475],[410,540],[300,540],[300,460],[265,460],[265,395],[270,345],[295,200],[295,200],[240,85],[240,25]],
+    // British Isles
+    [[245,30],[325,30],[330,170],[240,170]],
+    // Arabian Peninsula
+    [[520,380],[640,380],[645,480],[520,480]],
+    // Indian Subcontinent
+    [[630,300],[850,300],[855,430],[630,430]],
+    // Far East / Japan
+    [[840,170],[930,170],[935,270],[840,270]],
+  ],
+};
 
 export const EMPIRES = {
   maurya:  { id:'maurya',  name:'Maurya Empire',       era:'Ancient India 322 BC',   color:'#e67e22', dark:'#d35400', light:'#f39c12', text:'#fff',
@@ -134,13 +170,13 @@ export const TERRAIN_ICONS = {
 
 // Terrain display colors (subtle overlay tint)
 export const TERRAIN_COLORS = {
-  desert:    'rgba(244,164,96,0.15)',
-  plains:    'rgba(144,238,144,0.12)',
-  mountains: 'rgba(169,169,169,0.18)',
-  coast:     'rgba(100,149,237,0.12)',
-  island:    'rgba(100,149,237,0.15)',
-  forest:    'rgba(34,139,34,0.15)',
-  peninsula: 'rgba(210,180,140,0.12)',
+  desert:    'rgba(244,164,96,0.25)',
+  plains:    'rgba(144,238,144,0.2)',
+  mountains: 'rgba(169,169,169,0.25)',
+  coast:     'rgba(100,149,237,0.2)',
+  island:    'rgba(100,149,237,0.25)',
+  forest:    'rgba(34,139,34,0.25)',
+  peninsula: 'rgba(210,180,140,0.2)',
 };
 
 export const T = (id) => TERRITORIES[id];
