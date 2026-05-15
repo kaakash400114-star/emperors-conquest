@@ -119,8 +119,8 @@ export class Game {
             const cr = this._continueBtnRect;
             if (cr && sx >= cr.x && sx <= cr.x + cr.w && sy >= cr.y && sy <= cr.y + cr.h) {
                 this.input.consumeClick();
-                if (this.loadGame()) {
-                    return;
+                if (!this.loadGame()) {
+                    this._log('No saved game found!');
                 }
                 return;
             }

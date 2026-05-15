@@ -82,7 +82,7 @@ export const EMPIRES = {
              bonus:'+2 attack on plains',              bonusType:'plains', icon:'\u2660' },
   japan:   { id:'japan',   name:'Imperial Japan',      era:'Japan 1868 AD',           color:'#e74c3c', dark:'#c0392b', light:'#ff6b6b', text:'#fff',
              bonus:'+2 defense on islands',            bonusType:'island', icon:'\u265B' },
-  germany: { id:'germany', name:'Nazi Germany',        era:'Germany 1939 AD',         color:'#444',    dark:'#222',    light:'#666',    text:'#fff',
+  germany: { id:'germany', name:'Nazi Germany',        era:'Germany 1939 AD',         color:'#444444', dark:'#222222', light:'#666666', text:'#fff',
              bonus:'+3 coins per territory',          bonusType:'warMachine', icon:'\u2620' },
   russia:  { id:'russia',  name:'Soviet Russia',      era:'USSR 1922 AD',            color:'#cc0000', dark:'#990000', light:'#ff3333', text:'#fff',
              bonus:'Soldiers cost -5 coins',           bonusType:'cheap', icon:'\u2603' },

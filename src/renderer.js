@@ -57,8 +57,47 @@ export class Renderer {
         gr.addColorStop(1, '#0e3d5c');
         c.fillStyle = gr; c.fillRect(0, 0, W, H);
 
+        // Animated wave pattern at bottom
+        c.strokeStyle = 'rgba(255,255,255,0.04)';
+        c.lineWidth = 1;
+        for (let w = 0; w < 5; w++) {
+            c.beginPath();
+            for (let x = 0; x < W; x += 3) {
+                const y = H - 40 - w * 12 + Math.sin(x * 0.01 + this.time * 0.02 + w) * 6;
+                if (x === 0) c.moveTo(x, y); else c.lineTo(x, y);
+            }
+            c.stroke();
+        }
+
+        // Corner decorations — laurel wreath style
+        this._drawCornerDeco(c, 15, 15, 1, 1);
+        this._drawCornerDeco(c, W - 15, 15, -1, 1);
+        this._drawCornerDeco(c, 15, H - 15, 1, -1);
+        this._drawCornerDeco(c, W - 15, H - 15, -1, -1);
+
         // Subtle border
         c.strokeStyle = '#154360'; c.lineWidth = 3; c.strokeRect(2, 2, W-4, H-4);
+    }
+
+    _drawCornerDeco(c, x, y, dx, dy) {
+        c.save();
+        c.strokeStyle = 'rgba(184,154,106,0.3)';
+        c.lineWidth = 1.5;
+        // Small ornamental bracket
+        c.beginPath();
+        c.moveTo(x, y + dy * 30);
+        c.quadraticCurveTo(x, y, x + dx * 30, y);
+        c.stroke();
+        // Small diamond
+        c.fillStyle = 'rgba(184,154,106,0.3)';
+        c.beginPath();
+        c.moveTo(x + dx * 5, y + dy * 5);
+        c.lineTo(x + dx * 10, y);
+        c.lineTo(x + dx * 5, y - dy * 5);
+        c.lineTo(x, y);
+        c.closePath();
+        c.fill();
+        c.restore();
     }
 
     // ── MAP BACKGROUND — Landmasses on ocean ────────────────
@@ -122,6 +161,47 @@ export class Renderer {
         c.moveTo(0, -8); c.lineTo(0, 8);
         c.moveTo(-8, 0); c.lineTo(8, 0);
         c.stroke();
+        c.restore();
+
+        // Decorative war banners on the map edges
+        this._drawMapBanner(c, this.toScr(30, 20), 'rgba(139,0,0,0.15)', 0.7);
+        this._drawMapBanner(c, this.toScr(MAP_W - 30, 20), 'rgba(26,82,118,0.15)', -0.7);
+
+        // Small ship on ocean
+        const shipX = this.toScr(180, MAP_H - 50);
+        c.save();
+        c.translate(shipX.x, shipX.y);
+        c.strokeStyle = 'rgba(139,105,20,0.2)';
+        c.fillStyle = 'rgba(139,105,20,0.1)';
+        c.lineWidth = 1;
+        // Hull
+        c.beginPath();
+        c.moveTo(-12, 2); c.quadraticCurveTo(-15, 8, -8, 10);
+        c.lineTo(8, 10); c.quadraticCurveTo(15, 8, 12, 2);
+        c.closePath(); c.fill(); c.stroke();
+        // Mast
+        c.beginPath(); c.moveTo(0, 2); c.lineTo(0, -12); c.stroke();
+        // Sail
+        c.beginPath(); c.moveTo(0, -10); c.lineTo(8, -3); c.lineTo(0, 0); c.closePath();
+        c.fillStyle = 'rgba(245,230,200,0.15)'; c.fill();
+        c.restore();
+    }
+
+    _drawMapBanner(c, pos, color, scale) {
+        c.save();
+        c.translate(pos.x, pos.y);
+        c.scale(scale, scale);
+        // Pole
+        c.strokeStyle = 'rgba(139,105,20,0.2)';
+        c.lineWidth = 2;
+        c.beginPath(); c.moveTo(0, -20); c.lineTo(0, 30); c.stroke();
+        // Flag waving
+        const wave = Math.sin(this.time * 0.03) * 3;
+        c.fillStyle = color;
+        c.beginPath();
+        c.moveTo(0, -18); c.lineTo(20 + wave, -14);
+        c.lineTo(18 + wave * 0.5, -4); c.lineTo(0, -6);
+        c.closePath(); c.fill();
         c.restore();
     }
 
@@ -208,7 +288,119 @@ export class Renderer {
         }
 
         c.fillStyle = '#6b5040'; c.font = '12px "Segoe UI", sans-serif';
-        c.fillText('v3.2 - Ancient World Map Edition', W/2, H*0.93);
+        c.fillText('v3.3 - Ancient World Map Edition', W/2, H*0.93);
+
+        // ── Decorative Emperor Silhouettes on sides ──
+        this._drawEmperorSilhouette(c, W*0.04, H*0.3, 0.8);
+        this._drawEmperorSilhouette(c, W*0.96, H*0.3, -0.8);
+
+        // Crossed swords decoration under title
+        this._drawCrossedSwords(c, W/2, H*0.26 + 20, 1.2);
+
+        // Shield decorations on sides of features list
+        this._drawShield(c, W*0.08, H*0.5, '#8b0000');
+        this._drawShield(c, W*0.92, H*0.5, '#1a5276');
+
+        // Soldier silhouettes at bottom
+        this._drawSoldier(c, W*0.15, H*0.75, 0.6);
+        this._drawSoldier(c, W*0.85, H*0.75, -0.6);
+    }
+
+    // ── DECORATIVE DRAWING HELPERS ──────────────────────────
+
+    _drawEmperorSilhouette(c, x, y, scale) {
+        c.save();
+        c.translate(x, y);
+        c.scale(scale, scale);
+        c.fillStyle = 'rgba(139,105,20,0.15)';
+        // Crown
+        c.beginPath();
+        c.moveTo(-20, -40); c.lineTo(-25, -55); c.lineTo(-15, -48);
+        c.lineTo(-8, -58); c.lineTo(0, -45); c.lineTo(8, -58);
+        c.lineTo(15, -48); c.lineTo(25, -55); c.lineTo(20, -40);
+        c.closePath(); c.fill();
+        // Head
+        c.beginPath(); c.arc(0, -25, 18, 0, Math.PI*2); c.fill();
+        // Body/cloak
+        c.beginPath();
+        c.moveTo(-25, -10); c.lineTo(-35, 40); c.lineTo(-20, 45);
+        c.lineTo(-5, 10); c.lineTo(5, 10); c.lineTo(20, 45);
+        c.lineTo(35, 40); c.lineTo(25, -10);
+        c.closePath(); c.fill();
+        // Scepter
+        c.strokeStyle = 'rgba(139,105,20,0.2)';
+        c.lineWidth = 3;
+        c.beginPath(); c.moveTo(30, -30); c.lineTo(30, 40); c.stroke();
+        c.fillStyle = 'rgba(255,215,0,0.2)';
+        c.beginPath(); c.arc(30, -33, 5, 0, Math.PI*2); c.fill();
+        c.restore();
+    }
+
+    _drawCrossedSwords(c, x, y, scale) {
+        c.save();
+        c.translate(x, y);
+        c.scale(scale, scale);
+        c.strokeStyle = 'rgba(139,105,20,0.25)';
+        c.lineWidth = 2.5;
+        // Left sword
+        c.beginPath(); c.moveTo(-18, -18); c.lineTo(18, 18); c.stroke();
+        c.beginPath(); c.moveTo(-22, -12); c.lineTo(-14, -14); c.stroke();
+        // Right sword
+        c.beginPath(); c.moveTo(18, -18); c.lineTo(-18, 18); c.stroke();
+        c.beginPath(); c.moveTo(22, -12); c.lineTo(14, -14); c.stroke();
+        // Center gem
+        c.fillStyle = 'rgba(139,0,0,0.3)';
+        c.beginPath(); c.arc(0, 0, 4, 0, Math.PI*2); c.fill();
+        c.restore();
+    }
+
+    _drawShield(c, x, y, color) {
+        c.save();
+        c.translate(x, y);
+        c.fillStyle = color + '20';
+        c.strokeStyle = color + '40';
+        c.lineWidth = 2;
+        // Shield shape
+        c.beginPath();
+        c.moveTo(0, -25); c.lineTo(20, -18); c.lineTo(22, 5);
+        c.quadraticCurveTo(15, 28, 0, 32);
+        c.quadraticCurveTo(-15, 28, -22, 5);
+        c.lineTo(-20, -18); c.closePath();
+        c.fill(); c.stroke();
+        // Cross on shield
+        c.strokeStyle = color + '30';
+        c.lineWidth = 1.5;
+        c.beginPath(); c.moveTo(0, -18); c.lineTo(0, 25); c.stroke();
+        c.beginPath(); c.moveTo(-15, 0); c.lineTo(15, 0); c.stroke();
+        c.restore();
+    }
+
+    _drawSoldier(c, x, y, scale) {
+        c.save();
+        c.translate(x, y);
+        c.scale(scale, scale);
+        c.fillStyle = 'rgba(139,105,20,0.12)';
+        // Helmet
+        c.beginPath(); c.arc(0, -30, 12, Math.PI, 0); c.fill();
+        c.fillRect(-14, -30, 28, 4);
+        // Head
+        c.beginPath(); c.arc(0, -20, 8, 0, Math.PI*2); c.fill();
+        // Body armor
+        c.fillRect(-12, -12, 24, 30);
+        // Shield arm
+        c.fillRect(-20, -8, 10, 20);
+        // Sword arm
+        c.strokeStyle = 'rgba(139,105,20,0.15)';
+        c.lineWidth = 2;
+        c.beginPath(); c.moveTo(12, -5); c.lineTo(25, -25); c.stroke();
+        // Legs
+        c.fillRect(-10, 18, 8, 18);
+        c.fillRect(2, 18, 8, 18);
+        // Spear
+        c.strokeStyle = 'rgba(139,105,20,0.15)';
+        c.lineWidth = 2;
+        c.beginPath(); c.moveTo(-18, -15); c.lineTo(-18, -55); c.stroke();
+        c.restore();
     }
 
     // ── EMPIRE SELECT ─────────────────────────────────────────
@@ -225,6 +417,7 @@ export class Renderer {
         c.fillText('Each has a unique bonus - click to select', W/2, 78);
 
         const g = this.g;
+        g.btns = [];
         const bbW = 70, bbH = 28, bbX = 15, bbY = 15;
         const backBtn = { label: 'Back', fn: () => { g.state = 'menu'; g.sfx.click(); } };
         backBtn.rect = { x: bbX, y: bbY, w: bbW, h: bbH };
@@ -1382,7 +1575,7 @@ export class Renderer {
     _logPanel() {
         const c = this.ctx, g = this.g;
         if (g.log.length === 0) return;
-        const lx = g.W - 15, ly = g.H - 42;
+        let lx = g.W - 15, ly = g.H - 42;
         const max = 4, start = Math.max(0, g.log.length - max);
         c.textAlign = 'right'; c.font = '11px "Segoe UI", sans-serif'; c.textBaseline = 'bottom';
         for (let i = g.log.length - 1; i >= start; i--) {
@@ -1441,6 +1634,12 @@ export class Renderer {
             c.textAlign = 'center';
             c.fillText('Click to return to menu', W/2, H*0.82);
         }
+
+        // Fallen soldier silhouettes
+        this._drawSoldier(c, W*0.15, H*0.7, -0.5);
+        this._drawSoldier(c, W*0.85, H*0.7, 0.5);
+        // Broken shield
+        this._drawShield(c, W*0.25, H*0.85, '#8b0000');
     }
 
     // ── VICTORY SCREEN (with stats) ───────────────────────────
@@ -1490,6 +1689,12 @@ export class Renderer {
             c.textAlign = 'center';
             c.fillText('Click to return to menu', W/2, H*0.88);
         }
+
+        // Triumphant emperor silhouette
+        this._drawEmperorSilhouette(c, W*0.5, H*0.38, 1.5);
+        // Crossed swords of victory
+        this._drawCrossedSwords(c, W*0.3, H*0.85, 1.0);
+        this._drawCrossedSwords(c, W*0.7, H*0.85, 1.0);
     }
 
     // ── HELPERS ───────────────────────────────────────────────
