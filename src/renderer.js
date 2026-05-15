@@ -1,4 +1,4 @@
-import { MAP_W, MAP_H, T_RADIUS, TERRITORIES, EMPIRES, EIDS, T, E, adj, WEAPONS, SHOP, STRATEGIES } from './map.js';
+import { MAP_W, MAP_H, T_RADIUS, TERRITORIES, EMPIRES, EIDS, T, E, adj, WEAPONS, SHOP, STRATEGIES, TERRAIN_ICONS, TERRAIN_COLORS } from './map.js';
 
 export class Renderer {
     constructor(game) {
@@ -12,9 +12,13 @@ export class Renderer {
 
     _layout() {
         const { W, H } = this.g;
-        const sx = (W * 0.9) / MAP_W, sy = (H * 0.82) / MAP_H;
+        // Reserve right side for scoreboard (200px) when playing
+        const usableW = (this.g.state === 'playing' || this.g.state === 'attack' ||
+                         this.g.state === 'battle' || this.g.state === 'shop' ||
+                         this.g.state === 'moveDialog') ? W * 0.82 : W;
+        const sx = (usableW * 0.9) / MAP_W, sy = (H * 0.82) / MAP_H;
         this.scale = Math.min(sx, sy);
-        this.ox = (W - MAP_W * this.scale) / 2;
+        this.ox = (usableW - MAP_W * this.scale) / 2;
         this.oy = (H - MAP_H * this.scale) / 2 + 30;
     }
 
@@ -24,11 +28,13 @@ export class Renderer {
 
     terrAt(sx, sy) {
         const m = this.toMap(sx, sy);
+        let best = -1, bestD = T_RADIUS * T_RADIUS;
         for (const t of TERRITORIES) {
             const dx = m.x - t.cx, dy = m.y - t.cy;
-            if (dx * dx + dy * dy < T_RADIUS * T_RADIUS) return t.id;
+            const d = dx * dx + dy * dy;
+            if (d < bestD) { bestD = d; best = t.id; }
         }
-        return -1;
+        return best;
     }
 
     // ── BACKGROUND ────────────────────────────────────────────
@@ -37,7 +43,6 @@ export class Renderer {
         const gr = c.createRadialGradient(W/2, H/2, 80, W/2, H/2, W*0.7);
         gr.addColorStop(0, '#1e140e'); gr.addColorStop(0.6, '#120c07'); gr.addColorStop(1, '#080503');
         c.fillStyle = gr; c.fillRect(0, 0, W, H);
-        // Decorative border
         c.strokeStyle = '#3a2515'; c.lineWidth = 2; c.strokeRect(6, 6, W-12, H-12);
         c.strokeStyle = '#2a1a0e'; c.lineWidth = 1; c.strokeRect(10, 10, W-20, H-20);
     }
@@ -45,18 +50,15 @@ export class Renderer {
     // ── MENU ──────────────────────────────────────────────────
     _menu() {
         const c = this.ctx, { W, H } = this.g;
-        // Title
         c.textAlign = 'center'; c.textBaseline = 'middle';
         c.fillStyle = '#ffd700'; c.font = 'bold 52px Georgia, serif';
         c.fillText("EMPEROR'S CONQUEST", W/2, H*0.18);
         c.fillStyle = '#b8860b'; c.font = '22px Georgia, serif';
         c.fillText('From Ancient India to World War II', W/2, H*0.18+45);
 
-        // Divider
         c.strokeStyle = '#4a3525'; c.lineWidth = 1;
         c.beginPath(); c.moveTo(W*0.25, H*0.28); c.lineTo(W*0.75, H*0.28); c.stroke();
 
-        // Features
         c.fillStyle = '#aaa'; c.font = '16px "Segoe UI", sans-serif';
         const feats = [
             '10 Empires across 3000 years of history',
@@ -72,7 +74,7 @@ export class Renderer {
             c.textAlign = 'center';
         });
 
-        // Help button (bottom-left area, before flashing start text)
+        // Help button
         const hbW = 130, hbH = 36, hbX = 30, hbY = H*0.82 - 20;
         this.g._helpBtnRect = { x: hbX, y: hbY, w: hbW, h: hbH };
         c.fillStyle = '#1a100a';
@@ -83,15 +85,13 @@ export class Renderer {
         c.textAlign = 'center'; c.textBaseline = 'middle';
         c.fillText('How to Play', hbX + hbW/2, hbY + hbH/2);
 
-        // Flashing start
         if (Math.floor(this.time / 30) % 2 === 0) {
             c.fillStyle = '#ffd700'; c.font = 'bold 24px Georgia, serif';
             c.fillText('Click anywhere to begin', W/2, H*0.82);
         }
 
-        // Version
         c.fillStyle = '#444'; c.font = '12px "Segoe UI", sans-serif';
-        c.fillText('v2.0 — Turn-Based Strategy', W/2, H*0.95);
+        c.fillText('v3.0 — Turn-Based Strategy', W/2, H*0.95);
     }
 
     // ── EMPIRE SELECT ─────────────────────────────────────────
@@ -102,7 +102,6 @@ export class Renderer {
         c.fillStyle = '#888'; c.font = '14px "Segoe UI", sans-serif';
         c.fillText('Each has a unique bonus — click to select', W/2, 78);
 
-        // Back button at top-left
         const g = this.g;
         const bbW = 70, bbH = 28, bbX = 15, bbY = 15;
         const backBtn = { label: 'Back', fn: () => { g.state = 'menu'; g.sfx.click(); } };
@@ -128,25 +127,20 @@ export class Renderer {
             const hover = this.g.input.hoverX >= x && this.g.input.hoverX <= x+cw &&
                           this.g.input.hoverY >= y && this.g.input.hoverY <= y+ch;
 
-            // Card bg
             c.fillStyle = hover ? '#2a1a0e' : '#1a100a';
             c.strokeStyle = em.color; c.lineWidth = hover ? 2.5 : 1.5;
             this._rr(c, x, y, cw, ch, 8); c.fill(); c.stroke();
 
-            // Color bar top
             c.fillStyle = em.color; c.fillRect(x+1, y+1, cw-2, 5);
 
-            // Icon + Name
             c.fillStyle = em.color; c.font = '24px serif';
             c.fillText(em.icon || '?', x+cw/2, y+30);
             c.fillStyle = '#fff'; c.font = 'bold 13px "Segoe UI", sans-serif';
             c.fillText(em.name, x+cw/2, y+55);
 
-            // Era
             c.fillStyle = '#777'; c.font = '10px "Segoe UI", sans-serif';
             c.fillText(em.era, x+cw/2, y+72);
 
-            // Bonus
             c.fillStyle = '#ffd700'; c.font = '10px "Segoe UI", sans-serif';
             const words = em.bonus.split(' ');
             let ly = y + 90;
@@ -160,11 +154,9 @@ export class Renderer {
     // ── HELP SCREEN ───────────────────────────────────────────
     _helpScreen() {
         const c = this.ctx, { W, H } = this.g;
-        // Dark semi-transparent background
         c.fillStyle = 'rgba(0,0,0,0.85)';
         c.fillRect(0, 0, W, H);
 
-        // Centered panel
         const pw = 500, ph = 480, px = (W - pw)/2, py = (H - ph)/2;
         c.fillStyle = 'rgba(20,14,8,0.97)';
         this._rr(c, px, py, pw, ph, 12); c.fill();
@@ -175,7 +167,6 @@ export class Renderer {
         c.fillStyle = '#ffd700'; c.font = 'bold 26px Georgia, serif';
         c.fillText('How to Play', px + pw/2, py + 32);
 
-        // Divider
         c.strokeStyle = '#4a3525'; c.lineWidth = 1;
         c.beginPath(); c.moveTo(px + 30, py + 55); c.lineTo(px + pw - 30, py + 55); c.stroke();
 
@@ -201,7 +192,6 @@ export class Renderer {
             sy += 28;
         }
 
-        // Close hint
         c.textAlign = 'center';
         c.fillStyle = '#666'; c.font = '13px "Segoe UI", sans-serif';
         c.fillText('Click anywhere to close', px + pw/2, py + ph - 20);
@@ -255,6 +245,15 @@ export class Renderer {
             const isHov = g.hover === t.id;
             const isMoveT = g.phase === 'move' && g.sel != null && s.owner === g.player && adj(g.sel, t.id) && t.id !== g.sel;
             const isAtkT = (g.phase === 'attack' || g.state === 'attack') && g.sel != null && s.owner !== g.player && adj(g.sel, t.id);
+            const isPlayerTerr = s.owner === g.player;
+
+            // ── Pulsing animation on player territories ──
+            if (isPlayerTerr && !g._isAI()) {
+                const pulse = 0.08 + Math.sin(this.time * 0.04 + t.id * 0.7) * 0.05;
+                c.beginPath(); c.arc(p.x, p.y, r + 8 * this.scale, 0, Math.PI * 2);
+                c.fillStyle = `rgba(255,215,0,${pulse})`;
+                c.fill();
+            }
 
             // Target glows
             if (isMoveT) {
@@ -276,7 +275,7 @@ export class Renderer {
                 c.fillStyle = 'rgba(255,255,255,0.08)'; c.fill();
             }
 
-            // Circle
+            // ── Territory circle ──
             c.beginPath(); c.arc(p.x, p.y, r, 0, Math.PI*2);
             if (em) {
                 const gr = c.createRadialGradient(p.x-r*0.3, p.y-r*0.3, 0, p.x, p.y, r);
@@ -286,42 +285,78 @@ export class Renderer {
                 c.fillStyle = '#444';
             }
             c.fill();
+
+            // ── Terrain type color overlay ──
+            const terrainColor = TERRAIN_COLORS[t.terrain];
+            if (terrainColor) {
+                c.beginPath(); c.arc(p.x, p.y, r, 0, Math.PI*2);
+                c.fillStyle = terrainColor; c.fill();
+            }
+
             c.strokeStyle = isSel ? '#ffd700' : (isHov ? '#ccc' : 'rgba(255,255,255,0.2)');
             c.lineWidth = (isSel ? 3 : 1.5) * this.scale;
             c.stroke();
 
-            // Fort icon
-            if (s.fort > 0) {
-                c.fillStyle = '#3498db'; c.font = `bold ${Math.round(10*this.scale)}px sans-serif`;
+            // ── Terrain icon (top-left of circle) ──
+            const terrainIcon = TERRAIN_ICONS[t.terrain];
+            if (terrainIcon) {
+                c.fillStyle = 'rgba(255,255,255,0.35)';
+                c.font = `${Math.round(9*this.scale)}px sans-serif`;
                 c.textAlign = 'center'; c.textBaseline = 'middle';
-                c.fillText('\u{1F3F0}+' + s.fort, p.x + r*0.6, p.y - r*0.6);
+                c.fillText(terrainIcon, p.x - r * 0.55, p.y - r * 0.55);
             }
 
-            // Troops — hide enemy counts without spy
+            // ── Fort level with shield icons ──
+            if (s.fort > 0) {
+                const shields = Math.min(Math.ceil(s.fort / 2), 4);
+                c.fillStyle = '#3498db'; c.font = `bold ${Math.round(10*this.scale)}px sans-serif`;
+                c.textAlign = 'center'; c.textBaseline = 'middle';
+                c.fillText('\u{1F6E1}' + shields, p.x + r*0.6, p.y - r*0.6);
+            }
+
+            // ── Weapon tier indicator (bottom-right of circle) ──
+            if (s.weapon && s.weapon.name !== 'Sword') {
+                const tierNum = this._weaponTier(s.weapon);
+                if (tierNum > 0) {
+                    c.fillStyle = tierNum >= 4 ? '#e74c3c' : (tierNum >= 3 ? '#f39c12' : '#3498db');
+                    c.font = `bold ${Math.round(8*this.scale)}px sans-serif`;
+                    c.textAlign = 'center'; c.textBaseline = 'middle';
+                    c.fillText('T' + tierNum, p.x + r*0.6, p.y + r*0.6);
+                }
+            }
+
+            // ── Troops — hide enemy counts without spy ──
             c.fillStyle = em ? em.text : '#fff';
             c.font = `bold ${Math.round(17*this.scale)}px "Segoe UI", sans-serif`;
             c.textAlign = 'center'; c.textBaseline = 'middle';
             const hideTroops = s.owner && s.owner !== g.player && !(g.empires[g.player]?.spy);
-            c.fillText(hideTroops ? '?' : s.troops, p.x, p.y + r*0.3);
+            c.fillText(hideTroops ? '?' : s.troops, p.x, p.y + r*0.15);
 
-            // Name
+            // ── Name ──
             c.fillStyle = 'rgba(255,255,255,0.6)';
             c.font = `${Math.round(8*this.scale)}px "Segoe UI", sans-serif`;
             c.fillText(t.name, p.x, p.y + r + 10*this.scale);
 
-            // Empire name on hover/select
+            // ── Empire name on hover/select ──
             if (em && (isSel || isHov)) {
                 c.fillStyle = em.color;
                 c.font = `bold ${Math.round(9*this.scale)}px "Segoe UI", sans-serif`;
                 c.fillText(em.name, p.x, p.y - r - 8*this.scale);
             }
 
-            // Weapon icon
+            // ── Weapon name (above troops) ──
             if (s.weapon && s.weapon.name !== 'Sword') {
-                c.fillStyle = '#ffd700'; c.font = `${Math.round(8*this.scale)}px sans-serif`;
-                c.fillText(s.weapon.name.substring(0,4), p.x, p.y - r*0.1);
+                c.fillStyle = '#ffd700'; c.font = `${Math.round(7*this.scale)}px sans-serif`;
+                c.fillText(s.weapon.name.substring(0,6), p.x, p.y - r*0.15);
             }
         }
+    }
+
+    _weaponTier(weapon) {
+        for (const [tier, weapons] of Object.entries(WEAPONS)) {
+            if (weapons.includes(weapon)) return parseInt(tier);
+        }
+        return 0;
     }
 
     _drawParticles() {
@@ -353,9 +388,13 @@ export class Renderer {
         c.fillText(`Territories: ${emp.tids.length}/${TERRITORIES.length}`, 150, 40);
         const totalTroops = emp.tids.reduce((s,id) => s + g.ts[id].troops, 0);
         c.fillStyle = '#aaa'; c.fillText(`Troops: ${totalTroops}`, 340, 40);
-        c.textAlign = 'right'; c.fillStyle = '#888';
-        c.fillText(`Turn ${g.turn}`, W-15, 20);
-        c.fillStyle = '#ffd700'; c.fillText(g._isAI() ? 'AI Turn' : 'Your Turn', W-15, 40);
+
+        // Alive/dead empire count
+        const aliveCount = EIDS.filter(id => g.empires[id]?.alive).length;
+        c.textAlign = 'right';
+        c.fillStyle = '#888';
+        c.fillText(`Turn ${g.turn}  |  ${aliveCount} empires alive`, W - 15, 20);
+        c.fillStyle = '#ffd700'; c.fillText(g._isAI() ? 'AI Turn' : 'Your Turn', W - 15, 40);
 
         // Phase bar
         const msg = g.phaseMsg();
@@ -382,7 +421,7 @@ export class Renderer {
             { label: `Soldier (${soldierCost}c)`, active: hasSel && emp.coins >= soldierCost, fn: () => g._buySoldier() },
             { label: 'Veteran (20c)', active: hasSel && emp.coins >= 20, fn: () => g._buyVeteran() },
             { label: 'Move', active: canMove, fn: () => { g.phase = 'move'; g.sfx.click(); } },
-            { label: 'Attack', active: hasSel && hasAdjEnemy && g.ts[g.sel].troops > 1, fn: () => { g.state = 'attack'; g.sfx.click(); } },
+            { label: 'Attack', active: hasSel && hasAdjEnemy && g.ts[g.sel].troops > 1, fn: () => { g.phase = 'attack'; g._attackTarget = null; g.sfx.click(); } },
             { label: 'Shop', active: true, fn: () => { g.state = 'shop'; g.sfx.click(); } },
             { label: 'End Turn', active: true, fn: () => g.endTurn() },
             { label: 'Cancel', active: g.phase !== 'select', fn: () => { g.phase = 'select'; g.sfx.click(); } },
@@ -406,14 +445,92 @@ export class Renderer {
         }
     }
 
+    // ── EMPIRE SCOREBOARD PANEL (right side) ──────────────────
+    _scoreboard() {
+        const c = this.ctx, g = this.g;
+        const panelW = 190;
+        const px = g.W - panelW - 8;
+        const py = 55;
+        const ph = g.H - py - 55;
+
+        // Panel background
+        c.fillStyle = 'rgba(10,6,4,0.85)';
+        this._rr(c, px, py, panelW, ph, 8); c.fill();
+        c.strokeStyle = '#3a2515'; c.lineWidth = 1;
+        this._rr(c, px, py, panelW, ph, 8); c.stroke();
+
+        // Title
+        c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillStyle = '#ffd700'; c.font = 'bold 13px "Segoe UI", sans-serif';
+        c.fillText('EMPIRES', px + panelW/2, py + 16);
+
+        // Divider
+        c.strokeStyle = '#3a2515'; c.lineWidth = 1;
+        c.beginPath(); c.moveTo(px + 10, py + 28); c.lineTo(px + panelW - 10, py + 28); c.stroke();
+
+        let y = py + 42;
+        c.textAlign = 'left';
+
+        for (const eid of EIDS) {
+            const em = EMPIRES[eid];
+            const emp = g.empires[eid];
+            const isPlayer = eid === g.player;
+            const alive = emp?.alive;
+            const tCount = emp ? emp.tids.length : 0;
+
+            // Background highlight for player
+            if (isPlayer) {
+                c.fillStyle = 'rgba(255,215,0,0.06)';
+                this._rr(c, px + 4, y - 10, panelW - 8, 30, 4); c.fill();
+            }
+
+            // Color indicator
+            c.fillStyle = alive ? em.color : '#333';
+            c.fillRect(px + 8, y - 5, 4, 18);
+
+            // Empire name
+            c.font = `${isPlayer ? 'bold ' : ''}11px "Segoe UI", sans-serif`;
+            c.fillStyle = alive ? (isPlayer ? '#ffd700' : '#ccc') : '#555';
+            c.fillText(em.name.substring(0, 15), px + 18, y + 2);
+
+            // Status line
+            c.font = '9px "Segoe UI", sans-serif';
+            if (alive) {
+                c.fillStyle = '#888';
+                c.fillText(`${tCount} terr | ${emp.coins}c`, px + 18, y + 14);
+            } else {
+                c.fillStyle = '#e74c3c';
+                c.fillText('ELIMINATED', px + 18, y + 14);
+            }
+
+            y += 34;
+        }
+
+        // Player stats at bottom
+        y = py + ph - 70;
+        c.strokeStyle = '#3a2515'; c.lineWidth = 1;
+        c.beginPath(); c.moveTo(px + 10, y); c.lineTo(px + panelW - 10, y); c.stroke();
+
+        const stats = g.stats;
+        c.fillStyle = '#ffd700'; c.font = 'bold 11px "Segoe UI", sans-serif';
+        c.textAlign = 'center';
+        c.fillText('YOUR STATS', px + panelW/2, y + 14);
+
+        c.textAlign = 'left'; c.font = '10px "Segoe UI", sans-serif';
+        c.fillStyle = '#aaa';
+        c.fillText(`Kills: ${stats.kills}`, px + 12, y + 30);
+        c.fillText(`Conquered: ${stats.conquered}`, px + 100, y + 30);
+        c.fillText(`Coins earned: ${stats.coinsEarned}`, px + 12, y + 44);
+        c.fillText(`Total troops: ${stats.totalTroops}`, px + 100, y + 44);
+    }
+
     // ── MOVE DIALOG ───────────────────────────────────────────
     _moveDialog() {
         const c = this.ctx, g = this.g;
         const fromT = T(g.moveFrom), toT = T(g.moveTo);
         const fromS = g.ts[g.moveFrom], toS = g.ts[g.moveTo];
-        const available = fromS.troops - 1; // must leave 1 behind
+        const available = fromS.troops - 1;
 
-        // Panel centered, ~320x280
         const pw = 320, ph = 280, px = (g.W - pw)/2, py = (g.H - ph)/2;
         c.fillStyle = 'rgba(15,10,5,0.95)';
         this._rr(c, px, py, pw, ph, 10); c.fill();
@@ -424,12 +541,10 @@ export class Renderer {
         c.fillStyle = '#2ecc71'; c.font = 'bold 20px Georgia, serif';
         c.fillText('Move Troops', px + pw/2, py + 28);
 
-        // From / To info
         c.fillStyle = '#ddd'; c.font = '13px "Segoe UI", sans-serif';
         c.fillText(`From: ${fromT.name} (${fromS.troops} troops)`, px + pw/2, py + 58);
         c.fillText(`To: ${toT.name} (${toS.troops} troops)`, px + pw/2, py + 80);
 
-        // Available / Moving
         c.fillStyle = '#aaa'; c.font = '12px "Segoe UI", sans-serif';
         c.fillText(`Available: ${available}`, px + pw/2, py + 110);
         c.fillStyle = '#ffd700'; c.font = 'bold 14px "Segoe UI", sans-serif';
@@ -437,7 +552,6 @@ export class Renderer {
 
         g.btns = [];
 
-        // Adjust buttons row: [-5] [-1] [+1] [+5]
         const adjBtns = [
             { label: '-5', fn: () => g.moveDialogAdjust(-5) },
             { label: '-1', fn: () => g.moveDialogAdjust(-1) },
@@ -461,7 +575,6 @@ export class Renderer {
             bx += bw + 6;
         }
 
-        // Move All button
         const maW = 80, maX = px + pw/2 - maW/2, maY = py + 195;
         const maBtn = { label: 'Move All', fn: () => g.moveDialogAdjust(9999) };
         maBtn.rect = { x: maX, y: maY, w: maW, h: 26 };
@@ -473,7 +586,6 @@ export class Renderer {
         c.fillStyle = '#ffd700'; c.font = 'bold 11px "Segoe UI", sans-serif';
         c.fillText('Move All', maX + maW/2, maY + 13);
 
-        // Confirm Move button (green)
         const cmW = 120, cmH = 32;
         const cmX = px + pw/2 - cmW - 8, cmY = py + ph - 42;
         const cmBtn = { label: 'Confirm Move', fn: () => g.moveDialogConfirm() };
@@ -486,7 +598,6 @@ export class Renderer {
         c.fillStyle = '#2ecc71'; c.font = 'bold 13px "Segoe UI", sans-serif';
         c.fillText('Confirm Move', cmX + cmW/2, cmY + cmH/2);
 
-        // Cancel button (red)
         const caW = 80, caH = 32;
         const caX = px + pw/2 + 8, caY = py + ph - 42;
         const caBtn = { label: 'Cancel', fn: () => g.moveDialogCancel() };
@@ -500,32 +611,52 @@ export class Renderer {
         c.fillText('Cancel', caX + caW/2, caY + caH/2);
     }
 
-    // ── ATTACK PANEL ──────────────────────────────────────────
+    // ── MAIN RENDER ───────────────────────────────────────────
     render() {
         this._layout();
         this.time++;
         const c = this.ctx, g = this.g;
         this._bg();
 
+        const showWorld = g.state === 'playing' || g.state === 'moveDialog' ||
+                          g.state === 'attack' || g.state === 'battle' ||
+                          g.state === 'shop';
+        const showHUD = showWorld;
+        const showScoreboard = showWorld;
+
         if (g.state === 'menu') this._menu();
         else if (g.state === 'help') this._helpScreen();
         else if (g.state === 'empireSelect') this._empSel();
-        else if (g.state === 'playing') { this._world(); this._hud(); this._logPanel(); }
-        else if (g.state === 'moveDialog') { this._world(); this._hud(); this._moveDialog(); this._logPanel(); }
-        else if (g.state === 'attack') { this._world(); this._hud(); this._attackPanel(); this._logPanel(); }
-        else if (g.state === 'battle') { this._world(); this._hud(); this._battleOverlay(); this._logPanel(); }
-        else if (g.state === 'shop') { this._world(); this._hud(); this._shopPanel(); this._logPanel(); }
+        else if (g.state === 'playing') {
+            this._world(); this._hud(); this._scoreboard(); this._logPanel();
+        }
+        else if (g.state === 'moveDialog') {
+            this._world(); this._hud(); this._scoreboard(); this._moveDialog(); this._logPanel();
+        }
+        else if (g.state === 'attack') {
+            this._world(); this._hud(); this._scoreboard(); this._attackPanel(); this._logPanel();
+        }
+        else if (g.state === 'battle') {
+            this._world(); this._hud(); this._scoreboard(); this._battleOverlay(); this._logPanel();
+        }
+        else if (g.state === 'shop') {
+            this._world(); this._hud(); this._scoreboard(); this._shopPanel(); this._logPanel();
+        }
         else if (g.state === 'gameover') this._defeat();
         else if (g.state === 'victory') this._victory();
     }
 
+    // ── ATTACK PANEL ──────────────────────────────────────────
     _attackPanel() {
         const c = this.ctx, g = this.g;
-        // Find valid targets
-        const targets = T(g.sel).adj.filter(a => g.ts[a].owner !== g.player);
-        g._attackTarget = targets.length === 1 ? targets[0] : null;
 
-        // Panel (increased height for weapon equip section)
+        // FIX: Only set default attack target if it hasn't been set yet this panel open.
+        // Previously this reset _attackTarget every frame, breaking manual target selection.
+        if (g._attackTarget === null || g._attackTarget === undefined) {
+            const targets = T(g.sel).adj.filter(a => g.ts[a].owner !== g.player);
+            g._attackTarget = targets.length === 1 ? targets[0] : null;
+        }
+
         const pw = 350, ph = 480, px = (g.W - pw)/2, py = (g.H - ph)/2;
         c.fillStyle = 'rgba(15,10,5,0.92)';
         this._rr(c, px, py, pw, ph, 10); c.fill();
@@ -536,12 +667,17 @@ export class Renderer {
         c.fillStyle = '#e74c3c'; c.font = 'bold 22px Georgia, serif';
         c.fillText('Choose Strategy', px+pw/2, py+30);
 
-        c.fillStyle = '#aaa'; c.font = '13px "Segoe UI", sans-serif';
-        c.fillText(`Attacking from ${T(g.sel).name} (${g.ts[g.sel].troops} troops)`, px+pw/2, py+55);
+        // Show attacker and defender territory names
+        const atkName = T(g.sel).name;
+        const defName = g._attackTarget != null ? T(g._attackTarget).name : '???';
+        c.fillStyle = EMPIRES[g.player].color; c.font = '13px "Segoe UI", sans-serif';
+        c.fillText(`${atkName} (${g.ts[g.sel].troops} troops)`, px + pw/2, py + 55);
+        c.fillStyle = '#e74c3c'; c.font = '12px "Segoe UI", sans-serif';
+        c.fillText(`Target: ${defName}`, px + pw/2, py + 72);
 
         g.btns = [];
         // Back button
-        const backBtn = { label: 'Back', fn: () => { g.state = 'playing'; g.phase = 'select'; g.sfx.click(); } };
+        const backBtn = { label: 'Back', fn: () => { g.state = 'playing'; g.phase = 'select'; g._attackTarget = null; g.sfx.click(); } };
         const btw = 70, btx = px + pw - btw - 15, bty = py + 10;
         backBtn.rect = { x: btx, y: bty, w: btw, h: 28 };
         g.btns.push(backBtn);
@@ -549,16 +685,16 @@ export class Renderer {
         c.fillStyle = '#fff'; c.font = 'bold 12px "Segoe UI", sans-serif';
         c.fillText('Back', btx+btw/2, bty+14);
 
-        // Target selection if multiple
-        let btnStartY = py + 75;
-        if (targets.length > 1) {
-            c.fillStyle = '#888'; c.font = '13px "Segoe UI", sans-serif';
-            c.fillText('Click a red territory on the map, then choose strategy:', px+pw/2, btnStartY);
-            btnStartY += 25;
+        // Target selection
+        const allTargets = T(g.sel).adj.filter(a => g.ts[a].owner !== g.player);
+        let btnStartY = py + 88;
+        if (allTargets.length > 1) {
+            c.fillStyle = '#888'; c.font = '12px "Segoe UI", sans-serif';
+            c.fillText('Select target:', px+pw/2, btnStartY);
+            btnStartY += 18;
 
-            // Target buttons
             let tx = px + 15;
-            for (const tid of targets) {
+            for (const tid of allTargets) {
                 const em = g.ts[tid].owner ? EMPIRES[g.ts[tid].owner] : null;
                 const lbl = `${T(tid).name} (${g.ts[tid].troops})`;
                 c.font = 'bold 11px "Segoe UI", sans-serif';
@@ -586,15 +722,12 @@ export class Renderer {
         c.fillText('EQUIP WEAPON:', px + 15, btnStartY);
         btnStartY += 18;
 
-        // Collect all available weapons (Tier 1 always, + unlocked tiers)
         const availableWeapons = [];
-        // Tier 1 weapons (always available)
         if (WEAPONS[1]) {
             for (let wi = 0; wi < WEAPONS[1].length; wi++) {
                 availableWeapons.push({ tier: 1, wi, w: WEAPONS[1][wi] });
             }
         }
-        // Unlocked tier weapons (tiers 2-4)
         for (let tier = 2; tier <= 4; tier++) {
             if (emp.weapons.has(tier) && WEAPONS[tier]) {
                 for (let wi = 0; wi < WEAPONS[tier].length; wi++) {
@@ -654,13 +787,18 @@ export class Renderer {
 
         c.textAlign = 'center'; c.textBaseline = 'middle';
         c.fillStyle = '#e74c3c'; c.font = 'bold 30px Georgia, serif';
-        c.fillText('BATTLE RESULTS', cx, cy-120);
+        c.fillText('BATTLE RESULTS', cx, cy-130);
+
+        // Territory names
+        c.fillStyle = '#888'; c.font = '12px "Segoe UI", sans-serif';
+        c.fillText(`${T(b.from).name} → ${T(b.to).name}`, cx, cy-108);
 
         // Attacker
         c.fillStyle = EMPIRES[b.atk].color; c.font = 'bold 18px "Segoe UI", sans-serif';
-        c.fillText(EMPIRES[b.atk].name, cx-140, cy-80);
+        c.fillText(EMPIRES[b.atk].name, cx-140, cy-85);
         c.fillStyle = '#888'; c.font = '13px "Segoe UI", sans-serif';
-        c.fillText(`Weapon: ${b.res.atkWeapon}`, cx-140, cy-60);
+        c.fillText(`Weapon: ${b.res.atkWeapon}`, cx-140, cy-65);
+        c.fillText(`Bonus: +${b.res.atkBonus}`, cx-140, cy-48);
 
         // VS
         c.fillStyle = '#ffd700'; c.font = 'bold 24px Georgia, serif';
@@ -669,17 +807,18 @@ export class Renderer {
         // Defender
         const defEm = b.def ? EMPIRES[b.def] : null;
         c.fillStyle = defEm ? defEm.color : '#888'; c.font = 'bold 18px "Segoe UI", sans-serif';
-        c.fillText(defEm ? defEm.name : 'Neutral', cx+140, cy-80);
+        c.fillText(defEm ? defEm.name : 'Neutral', cx+140, cy-85);
         c.fillStyle = '#888'; c.font = '13px "Segoe UI", sans-serif';
-        c.fillText(`Weapon: ${b.res.defWeapon}`, cx+140, cy-60);
+        c.fillText(`Weapon: ${b.res.defWeapon}`, cx+140, cy-65);
+        c.fillText(`Bonus: +${b.res.defBonus}`, cx+140, cy-48);
 
         // Strategy
         c.fillStyle = '#aaa'; c.font = '14px "Segoe UI", sans-serif';
-        c.fillText(`Strategy: ${b.res.strategy}`, cx, cy-40);
+        c.fillText(`Strategy: ${b.res.strategy}`, cx, cy-30);
 
         // Dice
         const r = b.res;
-        let dy = cy - 10;
+        let dy = cy;
         c.font = '13px "Segoe UI", sans-serif';
         c.fillStyle = '#ccc'; c.fillText('Attack Dice', cx-130, dy);
         c.fillText('Defense Dice', cx+130, dy);
@@ -687,16 +826,28 @@ export class Renderer {
         for (let i = 0; i < Math.max(r.atkRolls.length, r.defRolls.length); i++) {
             if (i < r.atkRolls.length) {
                 const won = r.details[i]?.winner === 'atk';
-                this._die(c, cx-155+i*35, dy, 28, r.atkRolls[i], won ? '#2ecc71' : '#e74c3c');
+                const crit = r.details[i]?.atkCrit;
+                const col = crit ? '#ffd700' : (won ? '#2ecc71' : '#e74c3c');
+                this._die(c, cx-155+i*35, dy, 28, r.atkRolls[i], col);
+                if (crit) {
+                    c.fillStyle = '#ffd700'; c.font = 'bold 8px sans-serif';
+                    c.fillText('CRIT!', cx-155+i*35+14, dy+34);
+                }
             }
             if (i < r.defRolls.length) {
                 const won = r.details[i]?.winner === 'def';
-                this._die(c, cx+85+i*35, dy, 28, r.defRolls[i], won ? '#2ecc71' : '#e74c3c');
+                const crit = r.details[i]?.defCrit;
+                const col = crit ? '#ffd700' : (won ? '#2ecc71' : '#e74c3c');
+                this._die(c, cx+85+i*35, dy, 28, r.defRolls[i], col);
+                if (crit) {
+                    c.fillStyle = '#ffd700'; c.font = 'bold 8px sans-serif';
+                    c.fillText('CRIT!', cx+85+i*35+14, dy+34);
+                }
             }
         }
 
         // Result
-        const ry = cy + 55;
+        const ry = cy + 65;
         c.font = 'bold 20px "Segoe UI", sans-serif';
         if (r.conquered) {
             c.fillStyle = '#ffd700'; c.fillText('TERRITORY CONQUERED!', cx, ry);
@@ -738,7 +889,6 @@ export class Renderer {
         c.fillText(`Coins: ${emp.coins}`, px+pw/2, py+52);
 
         g.btns = [];
-        // Close
         const cb = { label: 'X', fn: () => { g.state = 'playing'; g.sfx.click(); } };
         cb.rect = { x: px+pw-35, y: py+10, w: 25, h: 25 };
         g.btns.push(cb);
@@ -746,7 +896,6 @@ export class Renderer {
         c.fillStyle = '#fff'; c.font = 'bold 14px sans-serif'; c.fillText('X', px+pw-22, py+23);
 
         let y = py + 75;
-        // Troops section
         c.fillStyle = '#e74c3c'; c.font = 'bold 14px "Segoe UI", sans-serif'; c.textAlign = 'left';
         c.fillText('TROOPS', px+20, y); y += 22;
         const troopItems = [
@@ -768,9 +917,8 @@ export class Renderer {
             y += 34;
         }
 
-        // Spy Network button (after Fortify)
+        // Spy Network
         if (emp.spy) {
-            // Already active — show disabled green indicator
             const spyLbl = 'Spy Network (Active)';
             const sbw = pw - 40;
             c.fillStyle = '#0a1a10';
@@ -780,7 +928,6 @@ export class Renderer {
             c.fillStyle = '#2ecc71'; c.font = 'bold 12px "Segoe UI", sans-serif'; c.textAlign = 'center';
             c.fillText(spyLbl, px+20+sbw/2, y+14);
         } else {
-            // Buy spy button
             const spyLbl = 'Spy Network - See enemy troops (30c)';
             const sbw = pw - 40;
             const spyBtn = { label: spyLbl, fn: () => g._buySpy() };
@@ -795,7 +942,7 @@ export class Renderer {
         }
         y += 38;
 
-        // Weapons section
+        // Weapons
         y += 4;
         c.fillStyle = '#3498db'; c.font = 'bold 14px "Segoe UI", sans-serif'; c.textAlign = 'left';
         c.fillText('WEAPONS', px+20, y); y += 5;
@@ -861,33 +1008,93 @@ export class Renderer {
         }
     }
 
-    // ── DEFEAT / VICTORY ──────────────────────────────────────
+    // ── DEFEAT SCREEN (with stats) ────────────────────────────
     _defeat() {
         const c = this.ctx, { W, H } = this.g;
+        const stats = this.g.stats;
+
         c.textAlign = 'center'; c.textBaseline = 'middle';
         c.fillStyle = '#e74c3c'; c.font = 'bold 52px Georgia, serif';
-        c.fillText('DEFEAT', W/2, H*0.35);
+        c.fillText('DEFEAT', W/2, H*0.22);
         c.fillStyle = '#aaa'; c.font = '20px "Segoe UI", sans-serif';
-        c.fillText(`Your empire fell on turn ${this.g.turn}`, W/2, H*0.35+45);
+        c.fillText(`Your empire fell on turn ${this.g.turn}`, W/2, H*0.22+45);
+
+        // Stats panel
+        const pw = 300, ph = 200, px = (W - pw)/2, py = H*0.42;
+        c.fillStyle = 'rgba(15,10,5,0.9)';
+        this._rr(c, px, py, pw, ph, 10); c.fill();
+        c.strokeStyle = '#e74c3c'; c.lineWidth = 2;
+        this._rr(c, px, py, pw, ph, 10); c.stroke();
+
+        c.fillStyle = '#ffd700'; c.font = 'bold 16px "Segoe UI", sans-serif';
+        c.fillText('Final Statistics', W/2, py + 25);
+
+        c.font = '14px "Segoe UI", sans-serif';
+        const statLines = [
+            { label: 'Territories Conquered', value: stats.conquered },
+            { label: 'Enemies Eliminated', value: stats.kills },
+            { label: 'Total Coins Earned', value: stats.coinsEarned },
+            { label: 'Turns Survived', value: this.g.turn },
+        ];
+        let sy = py + 55;
+        for (const s of statLines) {
+            c.textAlign = 'left'; c.fillStyle = '#aaa';
+            c.fillText(s.label, px + 20, sy);
+            c.textAlign = 'right'; c.fillStyle = '#ffd700';
+            c.fillText(String(s.value), px + pw - 20, sy);
+            sy += 30;
+        }
+
         if (Math.floor(this.time/30) % 2 === 0) {
             c.fillStyle = '#fff'; c.font = 'bold 18px "Segoe UI", sans-serif';
-            c.fillText('Click to return to menu', W/2, H*0.6);
+            c.textAlign = 'center';
+            c.fillText('Click to return to menu', W/2, H*0.82);
         }
     }
 
+    // ── VICTORY SCREEN (with stats) ───────────────────────────
     _victory() {
         const c = this.ctx, { W, H } = this.g;
+        const stats = this.g.stats;
+
         c.textAlign = 'center'; c.textBaseline = 'middle';
         c.fillStyle = '#ffd700'; c.font = 'bold 52px Georgia, serif';
-        c.fillText('VICTORY!', W/2, H*0.25);
+        c.fillText('VICTORY!', W/2, H*0.15);
         c.fillStyle = '#fff'; c.font = '24px Georgia, serif';
-        c.fillText(`${E(this.g.player).name} conquers all!`, W/2, H*0.25+50);
-        c.fillStyle = '#b8860b'; c.font = '18px "Segoe UI", sans-serif';
-        c.fillText(`Completed in ${this.g.turn} turns`, W/2, H*0.25+85);
-        c.font = '48px serif'; c.fillText('\u265A', W/2, H*0.25+140);
+        c.fillText(`${E(this.g.player).name} conquers all!`, W/2, H*0.15+50);
+        c.font = '48px serif'; c.fillText('\u265A', W/2, H*0.15+110);
+
+        // Stats panel
+        const pw = 300, ph = 220, px = (W - pw)/2, py = H*0.42;
+        c.fillStyle = 'rgba(15,10,5,0.9)';
+        this._rr(c, px, py, pw, ph, 10); c.fill();
+        c.strokeStyle = '#ffd700'; c.lineWidth = 2;
+        this._rr(c, px, py, pw, ph, 10); c.stroke();
+
+        c.fillStyle = '#ffd700'; c.font = 'bold 16px "Segoe UI", sans-serif';
+        c.fillText('Victory Statistics', W/2, py + 25);
+
+        c.font = '14px "Segoe UI", sans-serif';
+        const statLines = [
+            { label: 'Territories Conquered', value: stats.conquered },
+            { label: 'Enemies Eliminated', value: stats.kills },
+            { label: 'Total Coins Earned', value: stats.coinsEarned },
+            { label: 'Victory Turn', value: this.g.turn },
+            { label: 'Total Troops Raised', value: stats.totalTroops },
+        ];
+        let sy = py + 55;
+        for (const s of statLines) {
+            c.textAlign = 'left'; c.fillStyle = '#aaa';
+            c.fillText(s.label, px + 20, sy);
+            c.textAlign = 'right'; c.fillStyle = '#ffd700';
+            c.fillText(String(s.value), px + pw - 20, sy);
+            sy += 28;
+        }
+
         if (Math.floor(this.time/30) % 2 === 0) {
             c.fillStyle = '#fff'; c.font = 'bold 18px "Segoe UI", sans-serif';
-            c.fillText('Click to return to menu', W/2, H*0.7);
+            c.textAlign = 'center';
+            c.fillText('Click to return to menu', W/2, H*0.88);
         }
     }
 

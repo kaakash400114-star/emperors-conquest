@@ -13,8 +13,9 @@ export class Game {
         this._resize();
         window.addEventListener('resize', () => this._resize());
 
-        this.state = 'menu'; // menu|empireSelect|playing|attack|battle|shop|gameover|victory|help|moveDialog
-        this.phase = 'select';
+        // States: menu|empireSelect|playing|attack|battle|shop|gameover|victory|help|moveDialog
+        this.state = 'menu';
+        this.phase = 'select'; // sub-phases within playing: select|move|attack
         this.player = null;
         this.turn = 0;
         this.empires = {};
@@ -24,7 +25,7 @@ export class Game {
         this.log = [];
 
         // AI
-        this.aiQ = []; this.aiIdx = -1; this.aiTimer = 0; this.aiDelay = 35;
+        this.aiQ = []; this.aiIdx = -1; this.aiTimer = 0; this.aiDelay = 15;
 
         // Battle
         this.battle = null;
@@ -37,7 +38,7 @@ export class Game {
         this.moveTo = null;
         this.moveAmount = 0;
 
-        // Attack target
+        // Attack target — set when entering attack phase, not reset every frame
         this._attackTarget = null;
 
         // Help state
@@ -45,6 +46,17 @@ export class Game {
 
         // Buttons (cached for click detection)
         this.btns = [];
+
+        // Player statistics tracking
+        this.stats = {
+            kills: 0,
+            conquered: 0,
+            coinsEarned: 0,
+            totalTroops: 0,
+        };
+
+        // Kill tracking per empire (who eliminated whom)
+        this.killLog = {};
 
         // Systems
         this.sfx = new SFX();
@@ -90,7 +102,6 @@ export class Game {
     _upMenu() {
         if (this.input.hasClick()) {
             const sx = this.input.sx, sy = this.input.sy;
-            // Check for help button (renderer stores rect in this._helpBtnRect)
             const hr = this._helpBtnRect;
             if (hr && sx >= hr.x && sx <= hr.x + hr.w && sy >= hr.y && sy <= hr.y + hr.h) {
                 this.input.consumeClick();
@@ -130,20 +141,30 @@ export class Game {
         this.turn = 1;
         this.log = [];
 
-        this.ts = {};
-        for (const t of TERRITORIES) this.ts[t.id] = { owner: null, troops: 0, fort: 0, weapon: WEAPONS[1][0] };
+        // Reset stats
+        this.stats = { kills: 0, conquered: 0, coinsEarned: 0, totalTroops: 0 };
+        this.killLog = {};
 
+        // Initialize all territories
+        this.ts = {};
+        for (const t of TERRITORIES) {
+            this.ts[t.id] = { owner: null, troops: 0, fort: 0, weapon: WEAPONS[1][0] };
+        }
+
+        // Initialize empires and place starting territories
         this.empires = {};
         for (const id of EIDS) {
             const s = STARTS[id];
             if (!s) continue;
-            const emp = { id, tids: [...s.t], coins: 15, alive: true, weapons: new Set([0]), spy: false };
+            const emp = { id, tids: [...s.t], coins: 15, alive: true, weapons: new Set([1]), spy: false };
             this.empires[id] = emp;
             for (let i = 0; i < s.t.length; i++) {
                 this.ts[s.t[i]].owner = id;
                 this.ts[s.t[i]].troops = s.troops[i];
             }
         }
+
+        // Place neutral garrisons
         for (const [tid, troops] of Object.entries(NEUTRALS)) {
             this.ts[parseInt(tid)].troops = troops;
         }
@@ -172,7 +193,10 @@ export class Game {
             if (e.bonusType === 'warMachine') inc += 3;
         }
         emp.coins += inc;
-        if (eid === this.player) this._log(`Income: +${inc} coins (now ${emp.coins})`);
+        if (eid === this.player) {
+            this.stats.coinsEarned += inc;
+            this._log(`Income: +${inc} coins (now ${emp.coins})`);
+        }
     }
 
     // ── PLAYING ───────────────────────────────────────────────
@@ -190,7 +214,7 @@ export class Game {
             }
         }
 
-        // Check territory
+        // Check territory click
         const tid = this.renderer.terrAt(sx, sy);
         if (tid >= 0) {
             this.input.consumeClick();
@@ -218,30 +242,21 @@ export class Game {
         } else if (this.phase === 'attack') {
             if (tid !== this.sel && s.owner !== this.player && adj(this.sel, tid)) {
                 this._attackTarget = tid;
-                this.state = 'attack'; this.sfx.click();
+                this.state = 'attack';
+                this.sfx.click();
             } else if (s.owner === this.player) {
-                this.sel = tid; this.phase = 'select'; this.sfx.click();
+                this.sel = tid;
+                this.phase = 'select';
+                this._attackTarget = null;
+                this.sfx.click();
             } else this.sfx.error();
         }
-    }
-
-    _moveTroops(from, to, amount) {
-        const avail = this.ts[from].troops - 1;
-        const mv = Math.min(amount || avail, avail);
-        if (mv <= 0) { this.sfx.error(); this._log('Need 2+ troops to move!'); return; }
-        this.ts[from].troops -= mv;
-        this.ts[to].troops += mv;
-        this._log(`Moved ${mv} troops: ${T(from).name} -> ${T(to).name}`);
-        this.sfx.march();
-        this.renderer.shake = 2;
-        this.sel = null; this.phase = 'select';
     }
 
     // ── MOVE DIALOG ───────────────────────────────────────────
     _upMoveDialog() {
         if (!this.input.hasClick()) return;
         const sx = this.input.sx, sy = this.input.sy;
-        // Check buttons stored by renderer in g.btns
         for (const b of this.btns) {
             if (b.rect && sx >= b.rect.x && sx <= b.rect.x + b.rect.w && sy >= b.rect.y && sy <= b.rect.y + b.rect.h) {
                 this.input.consumeClick();
@@ -284,6 +299,7 @@ export class Game {
     _upAttack() {
         if (!this.input.hasClick()) return;
         const sx = this.input.sx, sy = this.input.sy;
+
         // Check buttons in attack panel
         for (const b of this.btns) {
             if (b.rect && sx >= b.rect.x && sx <= b.rect.x + b.rect.w && sy >= b.rect.y && sy <= b.rect.y + b.rect.h) {
@@ -292,10 +308,12 @@ export class Game {
                 return;
             }
         }
+
+        // FIX: Clicking outside buttons goes back to playing (not looping in attack state)
         this.input.consumeClick();
-        // Back to playing
         this.state = 'playing';
         this.phase = 'select';
+        this._attackTarget = null;
     }
 
     _doAttack(stratIdx) {
@@ -316,17 +334,25 @@ export class Game {
         this.renderer.shake = res.conquered ? 10 : 5;
         this.sfx.battle(); this.sfx.dice();
 
-        // Apply
+        // Apply results
         atkS.troops = res.atkLeft;
         emp.coins += res.coins;
-        if (this.player === this.player) this._log(`Battle! You ${res.conquered ? 'CONQUERED' : 'lost'} ${T(to).name}. +${res.coins} coins`);
+        this.stats.coinsEarned += res.coins;
+
+        // FIX: Removed dead code `if (this.player === this.player)` — was always true
+        this._log(`Battle! You ${res.conquered ? 'CONQUERED' : 'lost'} ${T(to).name}. +${res.coins} coins`);
 
         if (res.conquered) {
+            // Handle defender losing territory
             if (defS.owner && this.empires[defS.owner]) {
                 this.empires[defS.owner].tids = this.empires[defS.owner].tids.filter(t => t !== to);
                 if (this.empires[defS.owner].tids.length === 0) {
                     this.empires[defS.owner].alive = false;
                     emp.coins += 30;
+                    this.stats.coinsEarned += 30;
+                    this.stats.kills++;
+                    if (!this.killLog[this.player]) this.killLog[this.player] = [];
+                    this.killLog[this.player].push(defS.owner);
                     this._log(`${E(defS.owner).name} eliminated! +30 coins`);
                     this.sfx.elim();
                 }
@@ -335,21 +361,34 @@ export class Game {
             defS.troops = res.atkLeft;
             atkS.troops = 1;
             emp.tids.push(to);
+            this.stats.conquered++;
             this.sfx.capture();
             this.renderer.particles.push(...this._makeParticles(to, E(this.player).light));
-            if (emp.tids.length === TERRITORIES.length) { this.state = 'victory'; this.sfx.victory(); return; }
+            if (emp.tids.length === TERRITORIES.length) {
+                this.state = 'victory';
+                this.sfx.victory();
+                return;
+            }
         } else {
             defS.troops = res.defLeft;
         }
 
         this.state = 'battle';
         this.sel = null;
+        this._attackTarget = null;
     }
 
     _makeParticles(tid, color) {
         const p = this.renderer.toScr(T(tid).cx, T(tid).cy);
         const out = [];
-        for (let i = 0; i < 20; i++) out.push({ x: p.x, y: p.y, vx: (Math.random()-0.5)*6, vy: (Math.random()-0.5)*6-2, life: 1, decay: 0.015+Math.random()*0.02, color, size: 2+Math.random()*4 });
+        for (let i = 0; i < 20; i++) {
+            out.push({
+                x: p.x, y: p.y,
+                vx: (Math.random()-0.5)*6, vy: (Math.random()-0.5)*6-2,
+                life: 1, decay: 0.015+Math.random()*0.02,
+                color, size: 2+Math.random()*4
+            });
+        }
         return out;
     }
 
@@ -360,6 +399,7 @@ export class Game {
         this.battle = null;
         this.state = 'playing';
         this.phase = 'select';
+        this._attackTarget = null;
     }
 
     // ── SHOP ──────────────────────────────────────────────────
@@ -382,6 +422,7 @@ export class Game {
         const emp = this.empires[this.player];
         if (emp.coins < cost) { this.sfx.error(); this._log('Not enough coins!'); return; }
         emp.coins -= cost; this.ts[this.sel].troops++;
+        this.stats.totalTroops++;
         this._log(`Recruited soldier at ${T(this.sel).name} (-${cost} coins)`);
         this.sfx.recruit();
     }
@@ -391,6 +432,7 @@ export class Game {
         const emp = this.empires[this.player];
         if (emp.coins < 20) { this.sfx.error(); this._log('Not enough coins!'); return; }
         emp.coins -= 20; this.ts[this.sel].troops += 2;
+        this.stats.totalTroops += 2;
         this._log(`Recruited 2 veterans at ${T(this.sel).name} (-20 coins)`);
         this.sfx.recruit();
     }
@@ -433,12 +475,34 @@ export class Game {
 
     // ── END TURN ──────────────────────────────────────────────
     endTurn() {
-        this.sel = null; this.phase = 'select';
-        this.aiQ = []; this.aiIdx = 0; this.aiTimer = 0;
+        this.sel = null;
+        this.phase = 'select';
+        this._attackTarget = null;
+
+        // Build AI queue: only alive AI empires
+        this.aiQ = [];
+        this.aiIdx = 0;
+        this.aiTimer = 0;
+
+        // Give income to all alive AI empires
         for (const id of EIDS) {
             if (id === this.player || !this.empires[id]?.alive) continue;
             this._income(id);
         }
+
+        // Check if there are actually any AI empires to process
+        const hasAI = EIDS.some(id => id !== this.player && this.empires[id]?.alive);
+        if (!hasAI) {
+            // No AI left — just advance to next turn
+            this.aiQ = [];
+            this.aiIdx = -1;
+            this.turn++;
+            this._income(this.player);
+            this._log(`--- Turn ${this.turn} ---`);
+            this.sfx.turn();
+            return;
+        }
+
         this._log('--- AI empires are moving... ---');
     }
 
@@ -447,47 +511,91 @@ export class Game {
 
     _upAI() {
         this.aiTimer++;
+
+        // All AI empires processed — advance turn
         if (this.aiIdx >= EIDS.length) {
-            this.aiQ = []; this.aiIdx = 0; this.turn++;
+            this.aiQ = [];
+            this.aiIdx = -1;
+            this.turn++;
             this._income(this.player);
             this._log(`--- Turn ${this.turn} ---`);
             this.sfx.turn();
             return;
         }
-        const cur = EIDS[this.aiIdx];
-        if (cur === this.player || !this.empires[cur]?.alive) { this.aiIdx++; return; }
 
+        const cur = EIDS[this.aiIdx];
+
+        // Skip player and dead empires
+        if (cur === this.player || !this.empires[cur]?.alive) {
+            this.aiIdx++;
+            return;
+        }
+
+        // Generate actions for this AI if not already done
         if (!this.aiQ.length || this.aiQ._eid !== cur) {
             this.aiQ = new AI(this, cur).takeTurn();
             this.aiQ._eid = cur;
         }
 
+        // Process ALL actions for this empire after a short delay (one batch per empire)
         if (this.aiTimer >= this.aiDelay) {
             this.aiTimer = 0;
-            if (this.aiQ.length > 0) {
+
+            // Process all remaining actions for this empire at once
+            while (this.aiQ.length > 0) {
                 const a = this.aiQ.shift();
-                if (a.type === 'recruit') this._log(`${E(a.empire).name} recruited at ${T(a.territory).name}`);
-                else if (a.type === 'move') this._log(`${E(a.empire).name} moved ${a.troops} troops`);
+                if (a.type === 'recruit') {
+                    this._log(`${E(a.empire).name} recruited at ${T(a.territory).name}`);
+                }
+                else if (a.type === 'move') {
+                    this._log(`${E(a.empire).name} moved ${a.troops} troops`);
+                }
+                else if (a.type === 'fortify') {
+                    this._log(`${E(a.empire).name} fortified ${T(a.territory).name}`);
+                }
                 else if (a.type === 'attack') {
                     this._log(`${E(a.empire).name} attacked ${T(a.to).name} from ${T(a.from).name}${a.result.conquered ? ' — CONQUERED!' : ''}`);
                 }
-                else if (a.type === 'eliminated') this._log(`${E(a.by).name} eliminated ${E(a.empire).name}!`);
+                else if (a.type === 'eliminated') {
+                    this._log(`${E(a.by).name} eliminated ${E(a.empire).name}!`);
+                }
 
                 if (a.type === 'attack' && a.result.conquered) {
                     this.renderer.shake = 5;
-                    if (!this.empires[this.player].alive) { this.state = 'gameover'; this.sfx.defeat(); return; }
+                    // Check if player was eliminated
+                    if (!this.empires[this.player].alive) {
+                        this.state = 'gameover';
+                        this.sfx.defeat();
+                        this.aiQ = [];
+                        this.aiIdx = -1;
+                        return;
+                    }
+                    // Check if this AI won
+                    const aiEmp = this.empires[a.empire];
+                    if (aiEmp && aiEmp.alive && aiEmp.tids.length === TERRITORIES.length) {
+                        this.state = 'gameover';
+                        this.sfx.defeat();
+                        this.aiQ = [];
+                        this.aiIdx = -1;
+                        return;
+                    }
                 }
                 if (a.type === 'eliminated') this.sfx.elim();
-                if (a.type === 'attack') { this.sfx.battle(); }
-            } else {
-                this.aiIdx++; this.aiQ = [];
+                if (a.type === 'attack') this.sfx.battle();
             }
+
+            // This AI's turn is done, move to next
+            this.aiIdx++;
+            this.aiQ = [];
         }
     }
 
     // ── END SCREEN ────────────────────────────────────────────
     _upEnd() {
-        if (this.input.hasClick()) { this.input.consumeClick(); this.state = 'menu'; }
+        if (this.input.hasClick()) {
+            this.input.consumeClick();
+            this.state = 'menu';
+        }
     }
 
     // ── HELP SCREEN ───────────────────────────────────────────
