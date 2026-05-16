@@ -603,6 +603,37 @@ export class Renderer {
         c.fillStyle = 'rgba(180,50,50,0.3)'; c.fill();
         c.restore();
 
+        // ── 12b. Animated cloud shadows ──
+        c.save();
+        for (let i = 0; i < 8; i++) {
+            const cloudSpeed = 0.15 + i * 0.03;
+            const baseX = ((this.time * cloudSpeed + i * 130) % (MAP_W + 200)) - 100;
+            const baseY = 40 + i * 75 + Math.sin(i * 2.3) * 30;
+            const cloudW = (80 + i * 15) * this.scale;
+            const cloudH = (25 + i * 5) * this.scale;
+            const sp = this.toScr(baseX, baseY);
+
+            c.globalAlpha = 0.04 + Math.sin(this.time * 0.008 + i) * 0.015;
+            const cloudGr = c.createRadialGradient(sp.x, sp.y, 0, sp.x, sp.y, cloudW);
+            cloudGr.addColorStop(0, 'rgba(200,210,220,0.5)');
+            cloudGr.addColorStop(0.4, 'rgba(200,210,220,0.3)');
+            cloudGr.addColorStop(0.7, 'rgba(200,210,220,0.1)');
+            cloudGr.addColorStop(1, 'rgba(200,210,220,0)');
+            c.fillStyle = cloudGr;
+
+            // Draw cloud as overlapping ellipses for natural shape
+            c.beginPath();
+            c.ellipse(sp.x, sp.y, cloudW, cloudH, 0, 0, Math.PI * 2);
+            c.fill();
+            c.beginPath();
+            c.ellipse(sp.x - cloudW * 0.3, sp.y + cloudH * 0.15, cloudW * 0.6, cloudH * 0.8, 0, 0, Math.PI * 2);
+            c.fill();
+            c.beginPath();
+            c.ellipse(sp.x + cloudW * 0.35, sp.y - cloudH * 0.1, cloudW * 0.5, cloudH * 0.7, 0, 0, Math.PI * 2);
+            c.fill();
+        }
+        c.restore();
+
         // ── 13. Map border frame ──
         c.strokeStyle = 'rgba(139,105,20,0.3)';
         c.lineWidth = 2;
@@ -610,6 +641,62 @@ export class Renderer {
         c.strokeStyle = 'rgba(139,105,20,0.15)';
         c.lineWidth = 1;
         c.strokeRect(8, 8, g.W - 16, g.H - 16);
+
+        // ── 14. Animated sea creatures ──
+        c.save();
+        for (let i = 0; i < 5; i++) {
+            const angle = this.time * 0.002 + i * 1.3;
+            const cx = MAP_W * 0.1 + (Math.sin(angle * 0.7 + i * 2) * 0.5 + 0.5) * MAP_W * 0.8;
+            const cy = MAP_H * 0.2 + (Math.cos(angle * 0.5 + i * 1.7) * 0.5 + 0.5) * MAP_H * 0.6;
+            const sp = this.toScr(cx, cy);
+            const flip = Math.sin(angle + i) > 0 ? 1 : -1;
+
+            c.save();
+            c.translate(sp.x, sp.y);
+            c.scale(flip, 1);
+            c.globalAlpha = 0.12;
+            c.strokeStyle = '#3a6a8a';
+            c.lineWidth = 1;
+            c.fillStyle = 'rgba(60,100,130,0.08)';
+
+            // Whale shape
+            c.beginPath();
+            c.moveTo(0, 0);
+            c.quadraticCurveTo(6, -4, 12, -2);
+            c.quadraticCurveTo(14, 0, 12, 2);
+            c.quadraticCurveTo(6, 4, 0, 0);
+            c.fill(); c.stroke();
+            // Tail
+            c.beginPath();
+            c.moveTo(-1, 0);
+            c.quadraticCurveTo(-5, -5, -8, -3);
+            c.moveTo(-1, 0);
+            c.quadraticCurveTo(-5, 5, -8, 3);
+            c.stroke();
+            c.restore();
+        }
+
+        // ── 15. Flying birds (seagulls) ──
+        for (let i = 0; i < 6; i++) {
+            const birdAngle = this.time * 0.01 + i * 1.1;
+            const bx = ((this.time * 0.3 + i * 170) % (MAP_W + 100)) - 50;
+            const by = 20 + i * 50 + Math.sin(birdAngle) * 15;
+            const sp = this.toScr(bx, by);
+            const wingPhase = Math.sin(this.time * 0.15 + i * 2) * 4;
+
+            c.save();
+            c.translate(sp.x, sp.y);
+            c.globalAlpha = 0.18;
+            c.strokeStyle = '#2c3e50';
+            c.lineWidth = 1;
+            c.beginPath();
+            c.moveTo(-6, wingPhase);
+            c.quadraticCurveTo(-3, wingPhase * 0.3, 0, 0);
+            c.quadraticCurveTo(3, wingPhase * 0.3, 6, wingPhase);
+            c.stroke();
+            c.restore();
+        }
+        c.restore();
     }
 
     _drawMapBanner(c, pos, color, scale) {
@@ -679,6 +766,140 @@ export class Renderer {
             const eid = activeEmpires[Math.floor(Math.random() * activeEmpires.length)];
             this.showEmpireStory(eid);
         }
+    }
+
+    // ── EVENT OVERLAY ──────────────────────────────────────────
+    _drawEventOverlay() {
+        const evt = this.g.event;
+        if (!evt) return;
+        const c = this.ctx, g = this.g;
+        const { W } = g;
+
+        // Fade in for first 30 frames, hold, fade out for last 50 frames
+        let alpha;
+        const totalTimer = 180;
+        const elapsed = totalTimer - evt.timer;
+        if (elapsed < 30) {
+            alpha = elapsed / 30;
+        } else if (evt.timer < 50) {
+            alpha = evt.timer / 50;
+        } else {
+            alpha = 1;
+        }
+        if (alpha <= 0) return;
+
+        // Banner dimensions
+        const bannerH = 100;
+        const bannerY = 10;
+        const bannerX = 20;
+        const bannerW = W - 40;
+
+        c.save();
+        c.globalAlpha = alpha;
+
+        // Pulsing glow on border
+        const pulse = Math.sin(this.time * 0.08) * 0.3 + 0.7;
+        c.shadowColor = evt.color;
+        c.shadowBlur = 8 + pulse * 12;
+
+        // Dark backdrop with gradient
+        const bgGr = c.createLinearGradient(bannerX, bannerY, bannerX, bannerY + bannerH);
+        bgGr.addColorStop(0, 'rgba(15,8,5,0.92)');
+        bgGr.addColorStop(0.5, 'rgba(25,12,8,0.95)');
+        bgGr.addColorStop(1, 'rgba(15,8,5,0.92)');
+        this._rr(c, bannerX, bannerY, bannerW, bannerH, 14);
+        c.fillStyle = bgGr;
+        c.fill();
+
+        // Colored border
+        c.strokeStyle = evt.color;
+        c.lineWidth = 3;
+        this._rr(c, bannerX, bannerY, bannerW, bannerH, 14);
+        c.stroke();
+
+        // Reset shadow for inner elements
+        c.shadowColor = 'transparent';
+        c.shadowBlur = 0;
+
+        // Inner glow border
+        c.strokeStyle = evt.color + '30';
+        c.lineWidth = 1;
+        this._rr(c, bannerX + 5, bannerY + 5, bannerW - 10, bannerH - 10, 10);
+        c.stroke();
+
+        // Decorative corner accents
+        const accentLen = 20;
+        c.strokeStyle = evt.color + 'AA';
+        c.lineWidth = 2;
+        // Top-left
+        c.beginPath(); c.moveTo(bannerX + 8, bannerY + accentLen); c.lineTo(bannerX + 8, bannerY + 8); c.lineTo(bannerX + accentLen, bannerY + 8); c.stroke();
+        // Top-right
+        c.beginPath(); c.moveTo(bannerX + bannerW - accentLen, bannerY + 8); c.lineTo(bannerX + bannerW - 8, bannerY + 8); c.lineTo(bannerX + bannerW - 8, bannerY + accentLen); c.stroke();
+        // Bottom-left
+        c.beginPath(); c.moveTo(bannerX + 8, bannerY + bannerH - accentLen); c.lineTo(bannerX + 8, bannerY + bannerH - 8); c.lineTo(bannerX + accentLen, bannerY + bannerH - 8); c.stroke();
+        // Bottom-right
+        c.beginPath(); c.moveTo(bannerX + bannerW - accentLen, bannerY + bannerH - 8); c.lineTo(bannerX + bannerW - 8, bannerY + bannerH - 8); c.lineTo(bannerX + bannerW - 8, bannerY + bannerH - accentLen); c.stroke();
+
+        // Event icon (large emoji)
+        c.font = '42px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillText(evt.icon, bannerX + 50, bannerY + bannerH / 2);
+
+        // Event title
+        c.fillStyle = '#FFFFFF';
+        c.font = 'bold 20px Georgia, serif';
+        c.textAlign = 'left';
+        c.textBaseline = 'top';
+        c.fillText(evt.title, bannerX + 90, bannerY + 16);
+
+        // Event description
+        c.fillStyle = '#D4C5A9';
+        c.font = '14px Georgia, serif';
+        const maxTextW = bannerW - 120;
+        const words = evt.desc.split(' ');
+        let line = '';
+        let lineY = bannerY + 44;
+        const maxLines = 2;
+        let lineCount = 0;
+        for (const word of words) {
+            const testLine = line + word + ' ';
+            if (c.measureText(testLine).width > maxTextW) {
+                if (lineCount >= maxLines - 1) {
+                    line += '...';
+                    break;
+                }
+                c.fillText(line, bannerX + 90, lineY);
+                line = word + ' ';
+                lineY += 20;
+                lineCount++;
+            } else {
+                line = testLine;
+            }
+        }
+        c.fillText(line, bannerX + 90, lineY);
+
+        // "RANDOM EVENT" label
+        c.fillStyle = evt.color + 'CC';
+        c.font = 'bold 10px "Segoe UI", sans-serif';
+        c.textAlign = 'right';
+        c.textBaseline = 'top';
+        c.fillText('\u26A1 RANDOM EVENT \u26A1', bannerX + bannerW - 16, bannerY + 10);
+
+        // Progress bar
+        const progW = bannerW - 40;
+        const progH = 3;
+        const progX = bannerX + 20;
+        const progY = bannerY + bannerH - 12;
+        const progress = elapsed / totalTimer;
+        c.fillStyle = 'rgba(255,255,255,0.1)';
+        this._rr(c, progX, progY, progW, progH, 1.5);
+        c.fill();
+        c.fillStyle = evt.color;
+        this._rr(c, progX, progY, Math.max(3, progW * (1 - progress)), progH, 1.5);
+        c.fill();
+
+        c.restore();
     }
 
     _drawStoryOverlay() {
@@ -2581,22 +2802,22 @@ export class Renderer {
         else if (g.state === 'difficulty') this._difficultyScreen();
         else if (g.state === 'empireSelect') this._empSel();
         else if (g.state === 'playing') {
-            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._logPanel(); this._drawStoryOverlay();
+            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._logPanel(); this._drawStoryOverlay(); this._drawEventOverlay();
         }
         else if (g.state === 'moveDialog') {
-            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._moveDialog(); this._logPanel(); this._drawStoryOverlay();
+            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._moveDialog(); this._logPanel(); this._drawStoryOverlay(); this._drawEventOverlay();
         }
         else if (g.state === 'attack') {
-            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._attackPanel(); this._logPanel(); this._drawStoryOverlay();
+            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._attackPanel(); this._logPanel(); this._drawStoryOverlay(); this._drawEventOverlay();
         }
         else if (g.state === 'combat') {
-            this._world(); this._drawCombatAnim(); this._hud(); this._progressBar(); this._logPanel(); this._drawStoryOverlay();
+            this._world(); this._drawCombatAnim(); this._hud(); this._progressBar(); this._logPanel(); this._drawStoryOverlay(); this._drawEventOverlay();
         }
         else if (g.state === 'battle') {
-            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._battleOverlay(); this._logPanel(); this._drawStoryOverlay();
+            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._battleOverlay(); this._logPanel(); this._drawStoryOverlay(); this._drawEventOverlay();
         }
         else if (g.state === 'shop') {
-            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._shopPanel(); this._logPanel(); this._drawStoryOverlay();
+            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._shopPanel(); this._logPanel(); this._drawStoryOverlay(); this._drawEventOverlay();
         }
         else if (g.state === 'territory') this._drawTerritoryView();
         else if (g.state === 'gameover') this._defeat();

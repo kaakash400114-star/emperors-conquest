@@ -67,6 +67,12 @@ export class Game {
         // Kill tracking per empire (who eliminated whom)
         this.killLog = {};
 
+        // Random events system
+        this.event = null;       // current active event { type, title, desc, icon, color, duration, timer, effects }
+        this.eventHistory = [];  // past events
+        this.eventCooldown = 0;  // turns until next event can fire
+        this.goldenAge = false;  // double income this turn if true
+
         // Systems
         this.sfx = new SFX();
         this.input = new Input(this);
@@ -93,6 +99,14 @@ export class Game {
 
     _update(dt) {
         this.hover = this.renderer.terrAt(this.input.hoverX, this.input.hoverY);
+
+        // Event timer countdown
+        if (this.event) {
+            this.event.timer--;
+            if (this.event.timer <= 0) {
+                this.event = null;
+            }
+        }
 
         // Cursor: pointer when hovering over clickable territory
         const canvas = document.getElementById('gc');
@@ -208,7 +222,7 @@ export class Game {
         for (const id of EIDS) {
             const s = STARTS[id];
             if (!s) continue;
-            const emp = { id, tids: [...s.t], coins: 15, alive: true, weapons: new Set([1]), spy: false };
+            const emp = { id, tids: [...s.t], coins: 15, alive: true, weapons: new Set([1]), spy: false, alliances: {} };
             this.empires[id] = emp;
             for (let i = 0; i < s.t.length; i++) {
                 this.ts[s.t[i]].owner = id;
@@ -281,6 +295,10 @@ export class Game {
     // ── PLAYING ───────────────────────────────────────────────
     _upPlay() {
         if (this._isAI()) { this._upAI(); return; }
+        // Trigger random events at start of player turn
+        if (this.eventCooldown <= 0 && !this.event && this.turn > 1) {
+            this._triggerEvent();
+        }
         if (!this.input.hasClick()) return;
         const sx = this.input.sx, sy = this.input.sy;
 
@@ -671,6 +689,19 @@ export class Game {
             this._income(id);
         }
 
+        // Decrement alliance timers and remove expired alliances
+        for (const id of EIDS) {
+            const emp = this.empires[id];
+            if (!emp?.alliances) continue;
+            for (const allyId of Object.keys(emp.alliances)) {
+                emp.alliances[allyId]--;
+                if (emp.alliances[allyId] <= 0) {
+                    delete emp.alliances[allyId];
+                    this._log(`${E(id).name} and ${E(allyId).name}'s truce has ended!`);
+                }
+            }
+        }
+
         // Check if there are actually any AI empires to process
         const hasAI = EIDS.some(id => id !== this.player && this.empires[id]?.alive);
         if (!hasAI) {
@@ -678,7 +709,15 @@ export class Game {
             this.aiQ = [];
             this.aiIdx = -1;
             this.turn++;
+            const coinsBefore = this.empires[this.player].coins;
             this._income(this.player);
+            if (this.goldenAge) {
+                const incomeGained = this.empires[this.player].coins - coinsBefore;
+                this.empires[this.player].coins += incomeGained;
+                this.stats.coinsEarned += incomeGained;
+                this._log('Golden Age: Double income this turn!');
+                this.goldenAge = false;
+            }
             this._log(`--- Turn ${this.turn} ---`);
             this.sfx.turn();
             return;
@@ -698,7 +737,15 @@ export class Game {
             this.aiQ = [];
             this.aiIdx = -1;
             this.turn++;
+            const coinsBefore = this.empires[this.player].coins;
             this._income(this.player);
+            if (this.goldenAge) {
+                const incomeGained = this.empires[this.player].coins - coinsBefore;
+                this.empires[this.player].coins += incomeGained;
+                this.stats.coinsEarned += incomeGained;
+                this._log('Golden Age: Double income this turn!');
+                this.goldenAge = false;
+            }
             this._log(`--- Turn ${this.turn} ---`);
             this.sfx.turn();
             // Show random history lesson every 5 turns
@@ -874,6 +921,9 @@ export class Game {
             stats: this.stats,
             killLog: this.killLog,
             difficulty: this.difficulty,
+            eventHistory: this.eventHistory,
+            eventCooldown: this.eventCooldown,
+            goldenAge: this.goldenAge,
         };
         for (const [id, emp] of Object.entries(this.empires)) {
             data.empires[id] = {
@@ -881,6 +931,7 @@ export class Game {
                 tids: [...emp.tids],
                 weapons: [...emp.weapons],
                 spy: emp.spy,
+                alliances: emp.alliances || {},
             };
         }
         for (const [tid, s] of Object.entries(this.ts)) {
@@ -901,6 +952,9 @@ export class Game {
             this.difficulty = data.difficulty || 'normal';
             this.stats = data.stats || { kills:0, conquered:0, coinsEarned:0, totalTroops:0 };
             this.killLog = data.killLog || {};
+            this.eventHistory = data.eventHistory || [];
+            this.eventCooldown = data.eventCooldown || 0;
+            this.goldenAge = data.goldenAge || false;
 
             // Restore empires
             this.empires = {};
@@ -910,6 +964,7 @@ export class Game {
                     tids: emp.tids,
                     weapons: new Set(emp.weapons),
                     spy: emp.spy,
+                    alliances: emp.alliances || {},
                 };
             }
 
@@ -943,5 +998,194 @@ export class Game {
             }
         }
         return WEAPONS[1][0]; // default to Sword
+    }
+
+    // ── RANDOM EVENTS SYSTEM ──────────────────────────────────
+    static EVENT_TYPES = [
+        {
+            type: 'plague',
+            title: 'Plague Strikes!',
+            desc: 'A deadly plague sweeps through the land, decimating troops.',
+            icon: '\u{1F480}',
+            color: '#8B0000',
+            effects: { type: 'troop_reduce', minMag: 0.30, maxMag: 0.50, targets: 'random_territory' }
+        },
+        {
+            type: 'trade_caravan',
+            title: 'Trade Caravan Arrives!',
+            desc: 'Wealthy merchants pass through your lands bearing gifts.',
+            icon: '\u{1F4E6}',
+            color: '#DAA520',
+            effects: { type: 'bonus_coins', minMag: 10, maxMag: 20, targets: 'player' }
+        },
+        {
+            type: 'rebellion',
+            title: 'Rebellion Erupts!',
+            desc: 'Discontent soldiers desert their posts in droves.',
+            icon: '\u{1F525}',
+            color: '#E65100',
+            effects: { type: 'troop_reduce', minMag: 0.20, maxMag: 0.40, targets: 'random_territory' }
+        },
+        {
+            type: 'bounty_harvest',
+            title: 'Bountiful Harvest!',
+            desc: 'The gods bless your lands with a rich harvest and new recruits.',
+            icon: '\u{1F33E}',
+            color: '#2E7D32',
+            effects: { type: 'troop_bonus_all', magnitude: 1, targets: 'player_territories' }
+        },
+        {
+            type: 'storm',
+            title: 'Terrible Storm!',
+            desc: 'A violent storm batters a territory, scattering troops.',
+            icon: '\u{26C8}',
+            color: '#757575',
+            effects: { type: 'troop_reduce', minMag: 0.15, maxMag: 0.25, targets: 'random_territory' }
+        },
+        {
+            type: 'alliance',
+            title: 'Alliance Formed!',
+            desc: 'Two rival empires have forged a temporary truce.',
+            icon: '\u{1F91D}',
+            color: '#1565C0',
+            effects: { type: 'ai_alliance', duration: 2, targets: 'ai_empires' }
+        },
+        {
+            type: 'earthquake',
+            title: 'Earthquake!',
+            desc: 'The ground shakes violently, crumbling fortifications.',
+            icon: '\u{26F0}',
+            color: '#795548',
+            effects: { type: 'fort_destroy', targets: 'random_fortified' }
+        },
+        {
+            type: 'golden_age',
+            title: 'Golden Age!',
+            desc: 'Your empire enters a golden age of prosperity!',
+            icon: '\u{1F451}',
+            color: '#FFD700',
+            effects: { type: 'double_income', targets: 'player' }
+        }
+    ];
+
+    _triggerEvent() {
+        // Decrement cooldown
+        this.eventCooldown--;
+        if (this.eventCooldown > 0) return;
+
+        // 35% chance to fire
+        if (Math.random() > 0.35) {
+            this.eventCooldown = 1; // try again next turn
+            return;
+        }
+
+        // Pick a random event
+        const template = Game.EVENT_TYPES[Math.floor(Math.random() * Game.EVENT_TYPES.length)];
+
+        // Create the active event with display timer
+        const evt = {
+            type: template.type,
+            title: template.title,
+            desc: template.desc,
+            icon: template.icon,
+            color: template.color,
+            effects: { ...template.effects },
+            timer: 180, // 3 seconds at 60fps
+            duration: template.effects.duration || 0
+        };
+
+        // Apply effects
+        this._applyEventEffects(evt);
+
+        // Set as active event
+        this.event = evt;
+
+        // Set cooldown to 3-5 turns
+        this.eventCooldown = 3 + Math.floor(Math.random() * 3);
+
+        // Add to history
+        this.eventHistory.push({ type: evt.type, turn: this.turn, title: evt.title });
+
+        this._log(`\u26A1 EVENT: ${evt.title}`);
+    }
+
+    _applyEventEffects(evt) {
+        const eff = evt.effects;
+
+        switch (eff.type) {
+            case 'troop_reduce': {
+                // Pick a random territory owned by any alive empire
+                const candidates = [];
+                for (const tid of Object.keys(this.ts)) {
+                    const s = this.ts[parseInt(tid)];
+                    if (s.owner && s.troops > 1 && this.empires[s.owner]?.alive) {
+                        candidates.push(parseInt(tid));
+                    }
+                }
+                if (candidates.length === 0) return;
+                const tid = candidates[Math.floor(Math.random() * candidates.length)];
+                const s = this.ts[tid];
+                const mag = eff.minMag + Math.random() * (eff.maxMag - eff.minMag);
+                const lost = Math.max(1, Math.floor(s.troops * mag));
+                s.troops = Math.max(1, s.troops - lost);
+                const ownerName = this.empires[s.owner] ? E(s.owner).name : 'Neutral';
+                evt.desc = `${ownerName}'s ${T(tid).name} lost ${lost} troops!`;
+                break;
+            }
+            case 'bonus_coins': {
+                const bonus = eff.minMag + Math.floor(Math.random() * (eff.maxMag - eff.minMag + 1));
+                this.empires[this.player].coins += bonus;
+                this.stats.coinsEarned += bonus;
+                evt.desc = `Your treasury gains ${bonus} bonus coins!`;
+                break;
+            }
+            case 'troop_bonus_all': {
+                let count = 0;
+                for (const tid of this.empires[this.player].tids) {
+                    this.ts[tid].troops += eff.magnitude;
+                    count++;
+                }
+                if (count > 0) evt.desc = `All ${count} of your territories gained +${eff.magnitude} troop!`;
+                break;
+            }
+            case 'fort_destroy': {
+                // Pick a random territory with fortification > 0
+                const candidates = [];
+                for (const tid of Object.keys(this.ts)) {
+                    const s = this.ts[parseInt(tid)];
+                    if (s.fort > 0) candidates.push(parseInt(tid));
+                }
+                if (candidates.length === 0) return;
+                const tid = candidates[Math.floor(Math.random() * candidates.length)];
+                const s = this.ts[tid];
+                const ownerName = s.owner ? E(s.owner).name : 'Neutral';
+                evt.desc = `${ownerName}'s ${T(tid).name} fortifications crumbled!`;
+                s.fort = 0;
+                break;
+            }
+            case 'double_income': {
+                this.goldenAge = true;
+                evt.desc = 'Your empire will earn double income this turn!';
+                break;
+            }
+            case 'ai_alliance': {
+                // Pick two random alive AI empires
+                const aiEmpires = EIDS.filter(id => id !== this.player && this.empires[id]?.alive);
+                if (aiEmpires.length < 2) return;
+                // Shuffle and pick first two
+                for (let i = aiEmpires.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [aiEmpires[i], aiEmpires[j]] = [aiEmpires[j], aiEmpires[i]];
+                }
+                const e1 = aiEmpires[0], e2 = aiEmpires[1];
+                // Store alliance on empires
+                if (!this.empires[e1].alliances) this.empires[e1].alliances = {};
+                if (!this.empires[e2].alliances) this.empires[e2].alliances = {};
+                this.empires[e1].alliances[e2] = eff.duration;
+                this.empires[e2].alliances[e1] = eff.duration;
+                evt.desc = `${E(e1).name} and ${E(e2).name} have formed a temporary truce!`;
+                break;
+            }
+        }
     }
 }

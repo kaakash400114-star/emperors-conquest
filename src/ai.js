@@ -181,6 +181,9 @@ export class AI {
                 const es = this.g.ts[a];
                 if (!es || es.owner === this.eid) continue;
 
+                // Skip attack on allied empire
+                if (emp.alliances && emp.alliances[es.owner]) continue;
+
                 // Evaluate attack viability
                 const evaluation = this._evaluateAttack(t, a, tr, es.troops);
                 if (evaluation.shouldAttack) {
