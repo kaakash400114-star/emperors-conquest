@@ -1,4 +1,4 @@
-import { MAP_W, MAP_H, T_RADIUS, TERRITORIES, EMPIRES, EIDS, T, E, adj, WEAPONS, SHOP, STRATEGIES, TERRAIN_ICONS, TERRAIN_COLORS, MAP_BG } from './map.js';
+import { MAP_W, MAP_H, T_RADIUS, TERRITORIES, EMPIRES, EIDS, T, E, adj, WEAPONS, SHOP, STRATEGIES, TERRAIN_ICONS, TERRAIN_COLORS, MAP_BG, EMPIRE_STORIES, TERRITORY_STORIES } from './map.js';
 
 export class Renderer {
     constructor(game) {
@@ -10,6 +10,8 @@ export class Renderer {
         this.captureAnims = [];
         this.combatAnim = null; // { phase, timer, from, to, atkEm, defEm, soldiers, sparks, ... }
         this.time = 0;
+        // Story system
+        this.story = { text: '', empire: null, timer: 0, maxTimer: 0, alpha: 0, shown: new Set() };
     }
 
     _layout() {
@@ -49,57 +51,114 @@ export class Renderer {
         return -1;
     }
 
-    // ── BACKGROUND — Rich dark ocean gradient ────────────────
+    // ── BACKGROUND — Bright, beautiful, colorful gradient ──
     _bg() {
         const c = this.ctx, { W, H } = this.g;
-        const gr = c.createRadialGradient(W/2, H/2, 80, W/2, H/2, W*0.8);
-        gr.addColorStop(0, '#1a4a6e');
-        gr.addColorStop(0.4, '#0e3350');
-        gr.addColorStop(1, '#071a2e');
+        const t = this.time;
+
+        // 1. Bright sky-to-ocean gradient base
+        const gr = c.createLinearGradient(0, 0, W * 0.3, H);
+        gr.addColorStop(0, '#87CEEB');     // bright sky blue at top
+        gr.addColorStop(0.25, '#5DADE2');  // warm azure
+        gr.addColorStop(0.5, '#3498DB');   // rich blue
+        gr.addColorStop(0.7, '#1ABC9C');   // teal
+        gr.addColorStop(0.85, '#16A085');  // deep teal
+        gr.addColorStop(1, '#0E6655');     // ocean depth
         c.fillStyle = gr; c.fillRect(0, 0, W, H);
 
-        // Animated wave pattern
-        c.strokeStyle = 'rgba(100,180,255,0.05)';
-        c.lineWidth = 1;
+        // 2. Warm sunlight glow from top-right
+        const sunGr = c.createRadialGradient(W * 0.85, 0, 20, W * 0.85, 0, W * 0.6);
+        sunGr.addColorStop(0, 'rgba(255, 250, 205, 0.5)');
+        sunGr.addColorStop(0.2, 'rgba(255, 223, 120, 0.25)');
+        sunGr.addColorStop(0.5, 'rgba(255, 180, 80, 0.08)');
+        sunGr.addColorStop(1, 'rgba(255, 150, 50, 0)');
+        c.fillStyle = sunGr; c.fillRect(0, 0, W, H);
+
+        // 3. Soft colorful rainbow bands (very subtle)
+        c.save();
+        c.globalAlpha = 0.04;
+        const rainbowColors = ['#FF6B6B', '#FFA07A', '#FFD700', '#98FB98', '#87CEEB', '#DDA0DD'];
+        for (let i = 0; i < rainbowColors.length; i++) {
+            const bandY = H * 0.1 + i * (H * 0.15) + Math.sin(t * 0.008 + i) * 15;
+            const bandGr = c.createLinearGradient(0, bandY - 30, 0, bandY + 30);
+            bandGr.addColorStop(0, 'rgba(255,255,255,0)');
+            bandGr.addColorStop(0.5, rainbowColors[i]);
+            bandGr.addColorStop(1, 'rgba(255,255,255,0)');
+            c.fillStyle = bandGr;
+            c.fillRect(0, bandY - 30, W, 60);
+        }
+        c.restore();
+
+        // 4. Floating light bokeh particles (warm and cool mix)
+        for (let i = 0; i < 20; i++) {
+            const px = (Math.sin(t * 0.003 + i * 3.1) * 0.5 + 0.5) * W;
+            const py = (Math.cos(t * 0.0025 + i * 2.7) * 0.5 + 0.5) * H;
+            const orbHue = (t * 0.3 + i * 50) % 360;
+            const pulse = Math.sin(t * 0.015 + i * 1.7) * 0.5 + 0.5;
+            const radius = 3 + pulse * 5;
+            const orbGr = c.createRadialGradient(px, py, 0, px, py, radius * 3);
+            orbGr.addColorStop(0, `hsla(${orbHue}, 70%, 80%, ${0.12 + pulse * 0.08})`);
+            orbGr.addColorStop(0.5, `hsla(${orbHue}, 60%, 70%, ${0.04 + pulse * 0.02})`);
+            orbGr.addColorStop(1, `hsla(${orbHue}, 60%, 70%, 0)`);
+            c.fillStyle = orbGr;
+            c.beginPath(); c.arc(px, py, radius * 3, 0, Math.PI * 2); c.fill();
+            c.fillStyle = `hsla(${orbHue}, 80%, 90%, ${0.2 + pulse * 0.15})`;
+            c.beginPath(); c.arc(px, py, radius * 0.5, 0, Math.PI * 2); c.fill();
+        }
+
+        // 5. Animated gentle wave lines
+        c.save();
         for (let w = 0; w < 6; w++) {
+            const waveHue = 180 + w * 15 + Math.sin(t * 0.005) * 10;
+            c.globalAlpha = 0.06 + Math.sin(t * 0.008 + w) * 0.02;
+            c.strokeStyle = `hsla(${waveHue}, 65%, 70%, 1)`;
+            c.lineWidth = 1.5;
             c.beginPath();
             for (let x = 0; x < W; x += 3) {
-                const y = H - 40 - w * 12 + Math.sin(x * 0.01 + this.time * 0.02 + w) * 6;
+                const y = H - 50 - w * 25 + Math.sin(x * 0.006 + t * 0.015 + w * 0.9) * 10
+                        + Math.sin(x * 0.012 + t * 0.008) * 5;
                 if (x === 0) c.moveTo(x, y); else c.lineTo(x, y);
             }
             c.stroke();
         }
+        c.restore();
 
-        // Subtle floating particles
+        // 6. Golden shimmer particles (like sunlight on water)
+        c.save();
         for (let i = 0; i < 12; i++) {
-            const px = (Math.sin(this.time * 0.005 + i * 3.1) * 0.5 + 0.5) * W;
-            const py = (Math.cos(this.time * 0.004 + i * 2.7) * 0.5 + 0.5) * H;
-            const alpha = 0.03 + Math.sin(this.time * 0.02 + i) * 0.02;
-            c.fillStyle = `rgba(100,180,255,${alpha})`;
-            c.beginPath(); c.arc(px, py, 2, 0, Math.PI*2); c.fill();
+            const sx = (Math.sin(i * 127.1 + t * 0.002) * 0.5 + 0.5) * W;
+            const sy = (Math.sin(i * 269.5 + t * 0.0015) * 0.5 + 0.5) * H;
+            const shimmer = Math.sin(t * 0.04 + i * 2.3) * 0.5 + 0.5;
+            c.fillStyle = `rgba(255, 215, 0, ${shimmer * 0.15})`;
+            c.beginPath(); c.arc(sx, sy, 1 + shimmer * 2, 0, Math.PI * 2); c.fill();
         }
+        c.restore();
 
-        // Corner decorations
+        // 7. Corner decorations (golden)
         this._drawCornerDeco(c, 15, 15, 1, 1);
         this._drawCornerDeco(c, W - 15, 15, -1, 1);
         this._drawCornerDeco(c, 15, H - 15, 1, -1);
         this._drawCornerDeco(c, W - 15, H - 15, -1, -1);
 
-        // Subtle border
-        c.strokeStyle = '#0a2640'; c.lineWidth = 3; c.strokeRect(2, 2, W-4, H-4);
+        // 8. Ornate animated border (bright)
+        const borderHue = (t * 0.3) % 360;
+        c.strokeStyle = `hsla(${borderHue}, 60%, 60%, 0.4)`;
+        c.lineWidth = 2;
+        c.strokeRect(2, 2, W - 4, H - 4);
+        c.strokeStyle = `hsla(${(borderHue + 40) % 360}, 70%, 70%, 0.2)`;
+        c.lineWidth = 1;
+        c.strokeRect(5, 5, W - 10, H - 10);
     }
 
     _drawCornerDeco(c, x, y, dx, dy) {
         c.save();
-        c.strokeStyle = 'rgba(184,154,106,0.3)';
-        c.lineWidth = 1.5;
-        // Small ornamental bracket
+        c.strokeStyle = 'rgba(255, 200, 100, 0.4)';
+        c.lineWidth = 2;
         c.beginPath();
         c.moveTo(x, y + dy * 30);
         c.quadraticCurveTo(x, y, x + dx * 30, y);
         c.stroke();
-        // Small diamond
-        c.fillStyle = 'rgba(184,154,106,0.3)';
+        c.fillStyle = 'rgba(255, 200, 100, 0.35)';
         c.beginPath();
         c.moveTo(x + dx * 5, y + dy * 5);
         c.lineTo(x + dx * 10, y);
@@ -110,38 +169,360 @@ export class Renderer {
         c.restore();
     }
 
-    // ── MAP BACKGROUND — Landmasses on ocean ────────────────
+    // ── MAP BACKGROUND — Detailed World Map ────────────────
     _drawMapBg() {
-        const c = this.ctx;
+        const c = this.ctx, g = this.g;
 
-        // Draw land masses
-        for (const land of MAP_BG.lands) {
+        // ── 1. Bright vibrant ocean ──
+        const t = this.time;
+        const oceanGr = c.createRadialGradient(
+            this.toScr(480, 320).x, this.toScr(320, 320).y, 50,
+            this.toScr(480, 320).x, this.toScr(320, 320).y, this.toScr(600, 400).x
+        );
+        const oceanShift = Math.sin(t * 0.003) * 8;
+        oceanGr.addColorStop(0, `hsl(${190 + oceanShift}, 70%, 45%)`);
+        oceanGr.addColorStop(0.3, `hsl(${195 + oceanShift}, 65%, 40%)`);
+        oceanGr.addColorStop(0.7, `hsl(${200 + oceanShift}, 60%, 35%)`);
+        oceanGr.addColorStop(1, `hsl(${205 + oceanShift}, 55%, 30%)`);
+        c.fillStyle = oceanGr;
+        c.fillRect(0, 0, g.W, g.H);
+
+        // Animated caustic light patterns on ocean
+        c.save();
+        c.globalAlpha = 0.04;
+        for (let i = 0; i < 20; i++) {
+            const cx = (Math.sin(t * 0.003 + i * 3.7) * 0.5 + 0.5) * MAP_W;
+            const cy = (Math.cos(t * 0.002 + i * 2.9) * 0.5 + 0.5) * MAP_H;
+            const sp = this.toScr(cx, cy);
+            const radius = (20 + Math.sin(t * 0.01 + i) * 10) * this.scale;
+            const hue = (190 + i * 8 + t * 0.2) % 360;
+            const causticGr = c.createRadialGradient(sp.x, sp.y, 0, sp.x, sp.y, radius);
+            causticGr.addColorStop(0, `hsla(${hue}, 80%, 70%, 0.6)`);
+            causticGr.addColorStop(1, `hsla(${hue}, 80%, 70%, 0)`);
+            c.fillStyle = causticGr;
+            c.beginPath(); c.arc(sp.x, sp.y, radius, 0, Math.PI * 2); c.fill();
+        }
+        c.restore();
+
+        // ── 2. Animated ocean wave lines ──
+        c.save();
+        for (let w = 0; w < 10; w++) {
+            const waveHue = (195 + w * 7 + Math.sin(t * 0.005) * 15) % 360;
+            c.globalAlpha = 0.035 + Math.sin(t * 0.008 + w) * 0.01;
+            c.strokeStyle = `hsl(${waveHue}, 75%, 55%)`;
+            c.lineWidth = 1.2;
             c.beginPath();
-            const first = this.toScr(land[0][0], land[0][1]);
-            c.moveTo(first.x, first.y);
-            for (let i = 1; i < land.length; i++) {
-                const p = this.toScr(land[i][0], land[i][1]);
-                c.lineTo(p.x, p.y);
+            for (let mx = 0; mx <= MAP_W; mx += 4) {
+                const my = MAP_H * 0.2 + w * 38 + Math.sin(mx * 0.01 + t * 0.012 + w * 0.8) * 8
+                         + Math.sin(mx * 0.018 + t * 0.006) * 4;
+                const sp = this.toScr(mx, my);
+                if (mx === 0) c.moveTo(sp.x, sp.y); else c.lineTo(sp.x, sp.y);
             }
-            c.closePath();
+            c.stroke();
+        }
+        c.restore();
 
-            // Land gradient fill
-            const gr = c.createLinearGradient(0, 0, 0, this.g.H);
-            gr.addColorStop(0, '#c9b896');
-            gr.addColorStop(0.3, '#d4c4a0');
-            gr.addColorStop(0.6, '#c4a67a');
-            gr.addColorStop(1, '#b89a6a');
+        // ── 3. Draw land masses with realistic gradients ──
+        for (const land of MAP_BG.lands) {
+            // Build path
+            const buildLandPath = () => {
+                c.beginPath();
+                const first = this.toScr(land[0][0], land[0][1]);
+                c.moveTo(first.x, first.y);
+                for (let i = 1; i < land.length; i++) {
+                    const p = this.toScr(land[i][0], land[i][1]);
+                    c.lineTo(p.x, p.y);
+                }
+                c.closePath();
+            };
+
+            // Shadow / depth
+            c.save();
+            c.translate(3 * this.scale, 4 * this.scale);
+            buildLandPath();
+            c.fillStyle = 'rgba(100,80,60,0.15)';
+            c.fill();
+            c.restore();
+
+            // Land fill with vibrant colorful biome gradient
+            buildLandPath();
+            const gr = c.createLinearGradient(0, this.toScr(0, 100).y, 0, this.toScr(0, MAP_H).y);
+            gr.addColorStop(0, '#F0F4F8');    // snowy white north
+            gr.addColorStop(0.1, '#E8F5E9');  // light green
+            gr.addColorStop(0.25, '#A5D6A7'); // temperate green
+            gr.addColorStop(0.4, '#66BB6A');  // lush green
+            gr.addColorStop(0.55, '#FDD835'); // golden warm
+            gr.addColorStop(0.7, '#FFB74D');  // warm orange
+            gr.addColorStop(0.85, '#A1887F'); // Mediterranean brown
+            gr.addColorStop(1, '#C8E6C9');    // tropical green south
             c.fillStyle = gr;
             c.fill();
 
-            // Land border
-            c.strokeStyle = '#a08060';
-            c.lineWidth = 1.5;
+            // Subtle inner glow for 3D pop
+            buildLandPath();
+            c.save();
+            c.clip();
+            const innerGr = c.createRadialGradient(
+                this.toScr(land[0][0] + 20, land[0][1] + 10).x,
+                this.toScr(land[0][0] + 20, land[0][1] + 10).y, 0,
+                this.toScr(land[0][0] + 20, land[0][1] + 10).x,
+                this.toScr(land[0][0] + 20, land[0][1] + 10).y, 80 * this.scale
+            );
+            innerGr.addColorStop(0, 'rgba(255,255,200,0.08)');
+            innerGr.addColorStop(1, 'rgba(255,255,255,0)');
+            c.fillStyle = innerGr;
+            c.fillRect(0, 0, g.W, g.H);
+            c.restore();
+
+            // Coastline highlight (bright edge)
+            buildLandPath();
+            c.strokeStyle = '#FFF9C4';
+            c.lineWidth = 1.8 * this.scale;
             c.stroke();
+
+            // Coastline shadow (subtle depth)
+            c.save();
+            c.translate(1.5 * this.scale, 1.5 * this.scale);
+            buildLandPath();
+            c.strokeStyle = 'rgba(100,100,80,0.3)';
+            c.lineWidth = 1 * this.scale;
+            c.stroke();
+            c.restore();
         }
 
-        // Draw subtle grid lines for map feel
-        c.strokeStyle = 'rgba(100,80,60,0.08)';
+        // ── 4. Desert regions with golden shimmer ──
+        if (MAP_BG.deserts) {
+            for (const desert of MAP_BG.deserts) {
+                c.beginPath();
+                const first = this.toScr(desert[0][0], desert[0][1]);
+                c.moveTo(first.x, first.y);
+                for (let i = 1; i < desert.length; i++) {
+                    const p = this.toScr(desert[i][0], desert[i][1]);
+                    c.lineTo(p.x, p.y);
+                }
+                c.closePath();
+                // Vibrant desert gradient (bright golden)
+                const desertGr = c.createLinearGradient(
+                    this.toScr(540, 320).x, this.toScr(540, 320).y,
+                    this.toScr(640, 520).x, this.toScr(640, 520).y
+                );
+                desertGr.addColorStop(0, 'rgba(255, 223, 100, 0.45)');
+                desertGr.addColorStop(0.5, 'rgba(255, 193, 70, 0.4)');
+                desertGr.addColorStop(1, 'rgba(255, 167, 38, 0.35)');
+                c.fillStyle = desertGr;
+                c.fill();
+                // Sand dune pattern with golden shimmer
+                c.save();
+                c.clip();
+                c.strokeStyle = 'rgba(255, 235, 150, 0.25)';
+                c.lineWidth = 0.8;
+                for (let dy = -200; dy < MAP_H + 200; dy += 12) {
+                    c.beginPath();
+                    for (let dx = 0; dx <= MAP_W; dx += 4) {
+                        const sy = dy + Math.sin(dx * 0.025 + this.time * 0.004) * 5
+                                     + Math.sin(dx * 0.05 + this.time * 0.007) * 2;
+                        const sp = this.toScr(dx, sy);
+                        if (dx === 0) c.moveTo(sp.x, sp.y); else c.lineTo(sp.x, sp.y);
+                    }
+                    c.stroke();
+                }
+                c.restore();
+            }
+        }
+
+        // ── 5. Lush forest regions ──
+        if (MAP_BG.forests) {
+            for (const forest of MAP_BG.forests) {
+                c.beginPath();
+                const first = this.toScr(forest[0][0], forest[0][1]);
+                c.moveTo(first.x, first.y);
+                for (let i = 1; i < forest.length; i++) {
+                    const p = this.toScr(forest[i][0], forest[i][1]);
+                    c.lineTo(p.x, p.y);
+                }
+                c.closePath();
+                // Vibrant forest gradient
+                const forestGr = c.createRadialGradient(
+                    this.toScr(forest[0][0]+10, forest[0][1]+10).x,
+                    this.toScr(forest[0][0]+10, forest[0][1]+10).y, 0,
+                    this.toScr(forest[0][0]+10, forest[0][1]+10).x,
+                    this.toScr(forest[0][0]+10, forest[0][1]+10).y, 60*this.scale
+                );
+                forestGr.addColorStop(0, 'rgba(76, 175, 80, 0.4)');
+                forestGr.addColorStop(0.5, 'rgba(56, 142, 60, 0.35)');
+                forestGr.addColorStop(1, 'rgba(46, 125, 50, 0.2)');
+                c.fillStyle = forestGr;
+                c.fill();
+                // Tree texture dots
+                c.save();
+                c.clip();
+                for (let tx = 340; tx < 520; tx += 8) {
+                    for (let ty = 30; ty < 230; ty += 8) {
+                        const sp = this.toScr(tx, ty);
+                        const jitter = Math.sin(tx * 0.3 + ty * 0.7) * 2;
+                        const greenShade = 100 + Math.sin(tx * 0.1 + ty * 0.2) * 40;
+                        c.fillStyle = `rgba(30,${greenShade},30,0.15)`;
+                        c.beginPath();
+                        c.arc(sp.x + jitter, sp.y + jitter, 2 + Math.sin(tx*ty*0.01) * 1, 0, Math.PI * 2);
+                        c.fill();
+                    }
+                }
+                c.restore();
+            }
+        }
+
+        // ── 6. Sparkling rivers ──
+        if (MAP_BG.rivers) {
+            for (const river of MAP_BG.rivers) {
+                c.beginPath();
+                const sp0 = this.toScr(river.pts[0][0], river.pts[0][1]);
+                c.moveTo(sp0.x, sp0.y);
+                for (let i = 1; i < river.pts.length; i++) {
+                    const p = this.toScr(river.pts[i][0], river.pts[i][1]);
+                    c.lineTo(p.x, p.y);
+                }
+                // River glow (vibrant blue)
+                c.strokeStyle = 'rgba(80,180,255,0.35)';
+                c.lineWidth = (river.width || 1.5) * this.scale + 3;
+                c.lineCap = 'round';
+                c.lineJoin = 'round';
+                c.stroke();
+                // River main (bright cyan)
+                c.strokeStyle = 'rgba(60,160,240,0.7)';
+                c.lineWidth = (river.width || 1.5) * this.scale + 1;
+                c.stroke();
+                // River highlight (white shimmer)
+                c.strokeStyle = 'rgba(180,220,255,0.4)';
+                c.lineWidth = Math.max(0.5, (river.width || 1.5) * this.scale - 0.5);
+                c.stroke();
+                // Animated sparkles along river
+                for (let i = 0; i < river.pts.length; i++) {
+                    const sparklePhase = (this.time * 0.05 + i * 2.1) % 1;
+                    if (sparklePhase < 0.3) {
+                        const p = this.toScr(river.pts[i][0], river.pts[i][1]);
+                        const sparkleAlpha = Math.sin(sparklePhase / 0.3 * Math.PI) * 0.6;
+                        c.fillStyle = `rgba(200, 240, 255, ${sparkleAlpha})`;
+                        c.beginPath();
+                        c.arc(p.x, p.y, 1.5 + sparkleAlpha * 2, 0, Math.PI * 2);
+                        c.fill();
+                    }
+                }
+            }
+        }
+
+        // ── 7. Mountain ranges ──
+        if (MAP_BG.mountains) {
+            for (const mt of MAP_BG.mountains) {
+                // Mountain range line with triangular peaks
+                const pts = mt.pts;
+                c.save();
+                c.strokeStyle = mt.color || '#8B7355';
+                c.lineWidth = 2 * this.scale;
+                c.lineCap = 'round';
+                c.lineJoin = 'round';
+
+                // Draw the range as connected peaks
+                c.beginPath();
+                const sp0 = this.toScr(pts[0][0], pts[0][1]);
+                c.moveTo(sp0.x, sp0.y);
+                for (let i = 1; i < pts.length; i++) {
+                    const p = this.toScr(pts[i][0], pts[i][1]);
+                    c.lineTo(p.x, p.y);
+                }
+                c.globalAlpha = 0.5;
+                c.stroke();
+
+                // Draw mountain peak symbols along the range
+                c.fillStyle = mt.color || '#8B7355';
+                c.globalAlpha = 0.6;
+                for (let i = 0; i < pts.length; i++) {
+                    const p = this.toScr(pts[i][0], pts[i][1]);
+                    const sz = 6 * this.scale;
+                    // Small triangle (mountain symbol)
+                    c.beginPath();
+                    c.moveTo(p.x, p.y - sz);
+                    c.lineTo(p.x - sz * 0.6, p.y + sz * 0.3);
+                    c.lineTo(p.x + sz * 0.6, p.y + sz * 0.3);
+                    c.closePath();
+                    c.fill();
+                    // Snow cap
+                    c.fillStyle = 'rgba(255,255,255,0.5)';
+                    c.beginPath();
+                    c.moveTo(p.x, p.y - sz);
+                    c.lineTo(p.x - sz * 0.2, p.y - sz * 0.5);
+                    c.lineTo(p.x + sz * 0.2, p.y - sz * 0.5);
+                    c.closePath();
+                    c.fill();
+                    c.fillStyle = mt.color || '#8B7355';
+                }
+
+                // Mountain range label
+                if (mt.name && pts.length >= 2) {
+                    const midIdx = Math.floor(pts.length / 2);
+                    const lp = this.toScr(pts[midIdx][0], pts[midIdx][1]);
+                    c.globalAlpha = 0.4;
+                    c.fillStyle = '#5a4a3a';
+                    c.font = `italic ${Math.round(8 * this.scale)}px Georgia, serif`;
+                    c.textAlign = 'center';
+                    c.textBaseline = 'bottom';
+                    c.fillText(mt.name, lp.x, lp.y - 10 * this.scale);
+                }
+                c.restore();
+            }
+        }
+
+        // ── 8. Decorative islands ──
+        if (MAP_BG.islands) {
+            for (const isl of MAP_BG.islands) {
+                const cp = this.toScr(isl.cx, isl.cy);
+                const rx = isl.rx * this.scale, ry = isl.ry * this.scale;
+
+                // Island shadow
+                c.save();
+                c.translate(2, 2);
+                c.beginPath();
+                c.ellipse(cp.x, cp.y, rx, ry, 0, 0, Math.PI * 2);
+                c.fillStyle = 'rgba(30,100,30,0.12)';
+                c.fill();
+                c.restore();
+
+                // Island fill
+                c.beginPath();
+                c.ellipse(cp.x, cp.y, rx, ry, 0, 0, Math.PI * 2);
+                const iGr = c.createRadialGradient(cp.x - rx*0.2, cp.y - ry*0.2, 0, cp.x, cp.y, Math.max(rx, ry));
+                iGr.addColorStop(0, '#d4c4a0');
+                iGr.addColorStop(1, '#b89a6a');
+                c.fillStyle = iGr;
+                c.fill();
+                c.strokeStyle = '#a08060';
+                c.lineWidth = 1;
+                c.stroke();
+            }
+        }
+
+        // ── 9. Sea / Ocean labels ──
+        if (MAP_BG.seas) {
+            c.save();
+            for (const sea of MAP_BG.seas) {
+                const sp = this.toScr(sea.x, sea.y);
+                c.save();
+                c.translate(sp.x, sp.y);
+                if (sea.angle) c.rotate(sea.angle);
+                c.globalAlpha = 0.12 + Math.sin(this.time * 0.01 + sea.x) * 0.03;
+                c.fillStyle = '#5dade2';
+                c.font = `bold ${Math.round((sea.size || 10) * this.scale)}px Georgia, serif`;
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                c.letterSpacing = '3px';
+                c.fillText(sea.name, 0, 0);
+                c.restore();
+            }
+            c.restore();
+        }
+
+        // ── 10. Subtle grid lines (latitude/longitude feel) ──
+        c.save();
+        c.strokeStyle = 'rgba(100,80,60,0.06)';
         c.lineWidth = 0.5;
         for (let x = 0; x <= MAP_W; x += 60) {
             const p1 = this.toScr(x, 0), p2 = this.toScr(x, MAP_H);
@@ -151,50 +532,84 @@ export class Renderer {
             const p1 = this.toScr(0, y), p2 = this.toScr(MAP_W, y);
             c.beginPath(); c.moveTo(p1.x, p1.y); c.lineTo(p2.x, p2.y); c.stroke();
         }
+        c.restore();
 
-        // Compass rose decoration (bottom-right corner)
+        // ── 11. Compass rose ──
         const cx = this.toScr(MAP_W - 40, MAP_H - 40);
         c.save();
         c.translate(cx.x, cx.y);
-        c.strokeStyle = 'rgba(139,105,20,0.5)';
-        c.lineWidth = 1;
-        c.beginPath(); c.arc(0, 0, 18, 0, Math.PI * 2); c.stroke();
-        c.fillStyle = 'rgba(139,105,20,0.6)';
-        c.font = 'bold 10px Georgia, serif';
+        // Outer ring
+        c.strokeStyle = 'rgba(139,105,20,0.4)';
+        c.lineWidth = 1.5;
+        c.beginPath(); c.arc(0, 0, 20 * this.scale, 0, Math.PI * 2); c.stroke();
+        // Inner ring
+        c.strokeStyle = 'rgba(139,105,20,0.2)';
+        c.lineWidth = 0.8;
+        c.beginPath(); c.arc(0, 0, 14 * this.scale, 0, Math.PI * 2); c.stroke();
+        // Cardinal points
+        c.fillStyle = 'rgba(139,105,20,0.7)';
+        c.font = `bold ${Math.round(9 * this.scale)}px Georgia, serif`;
         c.textAlign = 'center'; c.textBaseline = 'middle';
-        c.fillText('N', 0, -12);
-        c.fillText('S', 0, 12);
-        c.fillText('E', 12, 0);
-        c.fillText('W', -12, 0);
-        // Cross lines
+        c.fillText('N', 0, -13 * this.scale);
+        c.fillText('S', 0, 13 * this.scale);
+        c.fillText('E', 13 * this.scale, 0);
+        c.fillText('W', -13 * this.scale, 0);
+        // North pointer (red)
+        c.fillStyle = 'rgba(180,50,50,0.6)';
         c.beginPath();
-        c.moveTo(0, -8); c.lineTo(0, 8);
-        c.moveTo(-8, 0); c.lineTo(8, 0);
+        c.moveTo(0, -10 * this.scale);
+        c.lineTo(-3 * this.scale, -3 * this.scale);
+        c.lineTo(3 * this.scale, -3 * this.scale);
+        c.closePath();
+        c.fill();
+        // South pointer
+        c.fillStyle = 'rgba(139,105,20,0.4)';
+        c.beginPath();
+        c.moveTo(0, 10 * this.scale);
+        c.lineTo(-3 * this.scale, 3 * this.scale);
+        c.lineTo(3 * this.scale, 3 * this.scale);
+        c.closePath();
+        c.fill();
+        // Cross lines
+        c.strokeStyle = 'rgba(139,105,20,0.3)';
+        c.lineWidth = 0.8;
+        c.beginPath();
+        c.moveTo(0, -10 * this.scale); c.lineTo(0, 10 * this.scale);
+        c.moveTo(-10 * this.scale, 0); c.lineTo(10 * this.scale, 0);
         c.stroke();
         c.restore();
 
-        // Decorative war banners on the map edges
-        this._drawMapBanner(c, this.toScr(30, 20), 'rgba(139,0,0,0.15)', 0.7);
-        this._drawMapBanner(c, this.toScr(MAP_W - 30, 20), 'rgba(26,82,118,0.15)', -0.7);
-
-        // Small ship on ocean
-        const shipX = this.toScr(180, MAP_H - 50);
+        // ── 12. Decorative ship on Atlantic ──
+        const shipX = this.toScr(150, MAP_H - 80);
         c.save();
         c.translate(shipX.x, shipX.y);
-        c.strokeStyle = 'rgba(139,105,20,0.2)';
-        c.fillStyle = 'rgba(139,105,20,0.1)';
+        const shipBob = Math.sin(this.time * 0.02) * 2;
+        c.translate(0, shipBob);
+        c.strokeStyle = 'rgba(139,105,20,0.25)';
+        c.fillStyle = 'rgba(139,105,20,0.12)';
         c.lineWidth = 1;
         // Hull
         c.beginPath();
-        c.moveTo(-12, 2); c.quadraticCurveTo(-15, 8, -8, 10);
-        c.lineTo(8, 10); c.quadraticCurveTo(15, 8, 12, 2);
+        c.moveTo(-14, 2); c.quadraticCurveTo(-18, 10, -10, 13);
+        c.lineTo(10, 13); c.quadraticCurveTo(18, 10, 14, 2);
         c.closePath(); c.fill(); c.stroke();
         // Mast
-        c.beginPath(); c.moveTo(0, 2); c.lineTo(0, -12); c.stroke();
+        c.beginPath(); c.moveTo(0, 2); c.lineTo(0, -16); c.stroke();
         // Sail
-        c.beginPath(); c.moveTo(0, -10); c.lineTo(8, -3); c.lineTo(0, 0); c.closePath();
-        c.fillStyle = 'rgba(245,230,200,0.15)'; c.fill();
+        c.beginPath(); c.moveTo(0, -14); c.lineTo(10, -4); c.lineTo(0, 0); c.closePath();
+        c.fillStyle = 'rgba(245,230,200,0.18)'; c.fill();
+        // Flag
+        c.beginPath(); c.moveTo(0, -16); c.lineTo(6, -18); c.lineTo(0, -20); c.closePath();
+        c.fillStyle = 'rgba(180,50,50,0.3)'; c.fill();
         c.restore();
+
+        // ── 13. Map border frame ──
+        c.strokeStyle = 'rgba(139,105,20,0.3)';
+        c.lineWidth = 2;
+        c.strokeRect(4, 4, g.W - 8, g.H - 8);
+        c.strokeStyle = 'rgba(139,105,20,0.15)';
+        c.lineWidth = 1;
+        c.strokeRect(8, 8, g.W - 16, g.H - 16);
     }
 
     _drawMapBanner(c, pos, color, scale) {
@@ -215,34 +630,227 @@ export class Renderer {
         c.restore();
     }
 
+    // ── STORY DISPLAY SYSTEM ─────────────────────────────────
+    showStory(text, empireId) {
+        this.story.text = text;
+        this.story.empire = empireId;
+        this.story.timer = 0;
+        this.story.maxTimer = 400; // ~6.7 seconds at 60fps
+        this.story.alpha = 0;
+        this.story.type = empireId ? 'empire' : 'territory';
+    }
+
+    showTerritoryStory(territoryId) {
+        const fact = TERRITORY_STORIES[territoryId];
+        if (fact && !this.story.shown.has('t' + territoryId)) {
+            this.story.shown.add('t' + territoryId);
+            this.showStory(fact, null);
+        }
+    }
+
+    showEmpireStory(empireId) {
+        const stories = EMPIRE_STORIES[empireId];
+        if (!stories) return;
+        // Find an unshown story
+        const unshown = [];
+        for (let i = 0; i < stories.length; i++) {
+            if (!this.story.shown.has(empireId + '_' + i)) unshown.push(i);
+        }
+        if (unshown.length === 0) {
+            // Reset if all shown (cycle through)
+            for (let i = 0; i < stories.length; i++) this.story.shown.delete(empireId + '_' + i);
+            this.showEmpireStory(empireId);
+            return;
+        }
+        const idx = unshown[Math.floor(Math.random() * unshown.length)];
+        this.story.shown.add(empireId + '_' + idx);
+        this.showStory(stories[idx], empireId);
+    }
+
+    showRandomEmpireStory() {
+        // Pick a random active empire and show a story
+        const activeEmpires = EIDS.filter(eid => {
+            for (const t of TERRITORIES) {
+                if (this.g.ts[t.id] && this.g.ts[t.id].owner === eid) return true;
+            }
+            return false;
+        });
+        if (activeEmpires.length > 0) {
+            const eid = activeEmpires[Math.floor(Math.random() * activeEmpires.length)];
+            this.showEmpireStory(eid);
+        }
+    }
+
+    _drawStoryOverlay() {
+        if (!this.story.text || this.story.maxTimer <= 0) return;
+        const c = this.ctx, g = this.g;
+        this.story.timer++;
+
+        // Fade in for first 40 frames, hold, fade out for last 60 frames
+        if (this.story.timer < 40) {
+            this.story.alpha = this.story.timer / 40;
+        } else if (this.story.timer > this.story.maxTimer - 60) {
+            this.story.alpha = (this.story.maxTimer - this.story.timer) / 60;
+        } else {
+            this.story.alpha = 1;
+        }
+
+        if (this.story.alpha <= 0) {
+            this.story.text = '';
+            this.story.maxTimer = 0;
+            return;
+        }
+
+        const alpha = this.story.alpha;
+        const { W, H } = g;
+
+        // Semi-transparent dark backdrop at bottom
+        const bannerH = 90;
+        const bannerY = H - bannerH - 10;
+        c.save();
+        c.globalAlpha = alpha * 0.85;
+
+        // Backdrop with gradient
+        const bgGr = c.createLinearGradient(0, bannerY, 0, bannerY + bannerH);
+        bgGr.addColorStop(0, 'rgba(10,5,20,0.7)');
+        bgGr.addColorStop(0.5, 'rgba(20,10,40,0.85)');
+        bgGr.addColorStop(1, 'rgba(10,5,20,0.7)');
+        this._rr(c, 20, bannerY, W - 40, bannerH, 12);
+        c.fillStyle = bgGr;
+        c.fill();
+
+        // Border
+        const borderColor = this.story.empire ? EMPIRES[this.story.empire].color : '#ffd700';
+        c.strokeStyle = borderColor;
+        c.lineWidth = 2;
+        this._rr(c, 20, bannerY, W - 40, bannerH, 12);
+        c.stroke();
+
+        // Inner glow border
+        c.strokeStyle = borderColor + '40';
+        c.lineWidth = 1;
+        this._rr(c, 24, bannerY + 4, W - 48, bannerH - 8, 10);
+        c.stroke();
+
+        // Empire icon and name
+        const em = this.story.empire ? EMPIRES[this.story.empire] : null;
+        c.textAlign = 'left';
+        c.textBaseline = 'top';
+
+        // "DID YOU KNOW?" label
+        c.fillStyle = '#ffd700';
+        c.font = 'bold 11px "Segoe UI", sans-serif';
+        const labelX = 40;
+        const labelY = bannerY + 10;
+        c.fillText('\uD83D\uDCDA HISTORY LESSON \uD83D\uDCDA', labelX, labelY);
+
+        // Empire name tag
+        if (em) {
+            const tagX = labelX + 200;
+            c.fillStyle = em.color + '30';
+            const tagW = c.measureText(em.name).width + 20;
+            this._rr(c, tagX, labelY - 2, tagW, 18, 4);
+            c.fill();
+            c.fillStyle = em.color;
+            c.font = 'bold 10px "Segoe UI", sans-serif';
+            c.fillText(em.icon + ' ' + em.name, tagX + 10, labelY);
+        }
+
+        // Story text with word wrap
+        c.fillStyle = '#f0e8d8';
+        c.font = '13px Georgia, serif';
+        c.textAlign = 'left';
+        c.textBaseline = 'top';
+        const maxTextW = W - 100;
+        const words = this.story.text.split(' ');
+        let line = '';
+        let lineY = bannerY + 32;
+        const maxLines = 3;
+        let lineCount = 0;
+
+        for (const word of words) {
+            const testLine = line + word + ' ';
+            if (c.measureText(testLine).width > maxTextW) {
+                if (lineCount >= maxLines - 1) {
+                    line += '...';
+                    break;
+                }
+                c.fillText(line, 40, lineY);
+                line = word + ' ';
+                lineY += 18;
+                lineCount++;
+            } else {
+                line = testLine;
+            }
+        }
+        c.fillText(line, 40, lineY);
+
+        // Progress bar (how much time left)
+        const progW = W - 80;
+        const progH = 3;
+        const progX = 40;
+        const progY = bannerY + bannerH - 10;
+        const progress = this.story.timer / this.story.maxTimer;
+        c.fillStyle = 'rgba(255,255,255,0.1)';
+        this._rr(c, progX, progY, progW, progH, 1.5);
+        c.fill();
+        c.fillStyle = borderColor;
+        this._rr(c, progX, progY, progW * (1 - progress), progH, 1.5);
+        c.fill();
+
+        c.restore();
+    }
+
     // ── MENU ──────────────────────────────────────────────────
     _menu() {
         const c = this.ctx, { W, H } = this.g;
 
-        // ── EPIC DARK BACKGROUND with animated gradient ──
+        // ── BRIGHT COLORFUL BACKGROUND ──
         const bgGr = c.createRadialGradient(W/2, H*0.3, 50, W/2, H/2, W*0.9);
-        bgGr.addColorStop(0, '#1a0a00');
-        bgGr.addColorStop(0.4, '#0d0805');
-        bgGr.addColorStop(1, '#050302');
+        bgGr.addColorStop(0, '#FFF8E1');    // warm cream center
+        bgGr.addColorStop(0.3, '#FFE0B2');  // peach
+        bgGr.addColorStop(0.6, '#FFCCBC');  // light salmon
+        bgGr.addColorStop(1, '#F8BBD0');    // pink edge
         c.fillStyle = bgGr; c.fillRect(0, 0, W, H);
 
-        // Animated golden particles in background
-        for (let i = 0; i < 30; i++) {
+        // Soft rainbow aurora bands
+        for (let band = 0; band < 4; band++) {
+            c.save();
+            c.globalAlpha = 0.08 + band * 0.02;
+            c.beginPath();
+            const baseY = H * (0.05 + band * 0.06);
+            c.moveTo(0, baseY);
+            for (let x = 0; x <= W; x += 15) {
+                const y = baseY + Math.sin(x * 0.004 + this.time * 0.008 + band * 0.5) * 25;
+                c.lineTo(x, y);
+            }
+            c.lineTo(W, baseY + H * 0.08);
+            c.lineTo(0, baseY + H * 0.08);
+            c.closePath();
+            const auroraColors = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF'];
+            c.fillStyle = auroraColors[band];
+            c.fill();
+            c.restore();
+        }
+
+        // Animated colorful particles
+        for (let i = 0; i < 50; i++) {
             const px = (Math.sin(this.time * 0.01 + i * 1.7) * 0.5 + 0.5) * W;
             const py = (Math.cos(this.time * 0.008 + i * 2.3) * 0.5 + 0.5) * H;
             const sz = 1 + Math.sin(this.time * 0.03 + i) * 0.8;
-            const alpha = 0.1 + Math.sin(this.time * 0.02 + i * 0.5) * 0.08;
-            c.fillStyle = `rgba(255,215,0,${alpha})`;
+            const alpha = 0.15 + Math.sin(this.time * 0.02 + i * 0.5) * 0.1;
+            const pColors = ['rgba(255,107,107,', 'rgba(255,217,61,', 'rgba(107,203,119,'];
+            c.fillStyle = pColors[i % 3] + alpha + ')';
             c.beginPath(); c.arc(px, py, sz, 0, Math.PI*2); c.fill();
         }
 
         // ── GRAND IMPERIAL BANNER ──
         const bx = W*0.05, by = H*0.04, bw = W*0.9, bh = H*0.92;
         const bannerGr = c.createLinearGradient(bx, by, bx+bw, by+bh);
-        bannerGr.addColorStop(0, 'rgba(44,24,16,0.95)');
-        bannerGr.addColorStop(0.3, 'rgba(60,35,20,0.9)');
-        bannerGr.addColorStop(0.7, 'rgba(60,35,20,0.9)');
-        bannerGr.addColorStop(1, 'rgba(44,24,16,0.95)');
+        bannerGr.addColorStop(0, 'rgba(255, 248, 225, 0.92)');
+        bannerGr.addColorStop(0.3, 'rgba(255, 243, 224, 0.88)');
+        bannerGr.addColorStop(0.7, 'rgba(255, 243, 224, 0.88)');
+        bannerGr.addColorStop(1, 'rgba(255, 248, 225, 0.92)');
         this._rr(c, bx, by, bw, bh, 18); c.fillStyle = bannerGr; c.fill();
 
         // Triple gold border
@@ -268,21 +876,22 @@ export class Renderer {
         c.font = '60px serif';
         c.fillText('👑', W/2, H*0.10);
 
-        // ── TITLE WITH GLOW ──
-        c.shadowColor = 'rgba(255,215,0,0.5)'; c.shadowBlur = 20;
-        c.fillStyle = '#ffd700'; c.font = 'bold 52px Georgia, serif';
-        c.fillText("EMPEROR'S CONQUEST", W/2 + 2, H*0.19 + 2);
-        c.fillStyle = '#ffd700';
+        // ── TITLE WITH ANIMATED GLOW ──
+        c.save();
+        const titlePulse = 18 + Math.sin(this.time * 0.04) * 8;
+        c.shadowColor = 'rgba(255,100,50,0.5)';
+        c.shadowBlur = titlePulse;
+        c.fillStyle = '#D32F2F'; c.font = 'bold 52px Georgia, serif';
         c.fillText("EMPEROR'S CONQUEST", W/2, H*0.19);
-        c.shadowColor = 'transparent'; c.shadowBlur = 0;
+        c.restore();
 
         // Subtitle
-        c.fillStyle = '#b89a6a'; c.font = 'italic 18px Georgia, serif';
+        c.fillStyle = '#5D4037'; c.font = 'italic 18px Georgia, serif';
         c.fillText('Conquer the Ancient World — From India to Rome', W/2, H*0.19+42);
 
         // ── ORNATE DIVIDER with crossed swords ──
         const divY = H*0.27;
-        c.strokeStyle = '#b7950b'; c.lineWidth = 2;
+        c.strokeStyle = '#E65100'; c.lineWidth = 2;
         c.beginPath(); c.moveTo(W*0.15, divY); c.lineTo(W*0.42, divY); c.stroke();
         c.beginPath(); c.moveTo(W*0.58, divY); c.lineTo(W*0.85, divY); c.stroke();
         // Center diamond
@@ -296,8 +905,8 @@ export class Renderer {
 
         // ── EMPIRE SHOWCASE — Kings & Icons Row ──
         const showcaseY = H * 0.32;
-        c.fillStyle = '#ffd700'; c.font = 'bold 14px "Segoe UI", sans-serif';
-        c.fillText('👑  CHOOSE YOUR DYNASTY  👑', W/2, showcaseY);
+        c.fillStyle = '#D32F2F'; c.font = 'bold 14px "Segoe UI", sans-serif';
+        c.fillText('CHOOSE YOUR DYNASTY', W/2, showcaseY);
 
         const empireRow = showcaseY + 25;
         const eSpacing = Math.min(80, (W * 0.7) / EIDS.length);
@@ -313,14 +922,14 @@ export class Renderer {
             c.font = '32px serif';
             c.fillText(em.icon || '?', ex, empireRow);
             // Empire name
-            c.fillStyle = '#b89a6a'; c.font = '9px "Segoe UI", sans-serif';
+            c.fillStyle = '#5D4037'; c.font = '9px "Segoe UI", sans-serif';
             c.fillText(em.name, ex, empireRow + 22);
         }
 
         // ── FEATURES LIST with icons ──
         const featsY = H * 0.44;
-        c.fillStyle = '#ffd700'; c.font = 'bold 14px "Segoe UI", sans-serif';
-        c.fillText('📜  GAME FEATURES  📜', W/2, featsY);
+        c.fillStyle = '#D32F2F'; c.font = 'bold 14px "Segoe UI", sans-serif';
+        c.fillText('GAME FEATURES', W/2, featsY);
 
         const feats = [
             ['🌍', '18 Territories across Europe, Asia & Africa', '#3498db'],
@@ -344,7 +953,7 @@ export class Renderer {
             c.fillStyle = color;
             c.fillText(icon, W*0.25, fy);
             c.font = '14px "Segoe UI", sans-serif'; c.textAlign = 'left';
-            c.fillStyle = '#f5e6c8';
+            c.fillStyle = '#4E342E';
             c.fillText(text, W*0.29, fy);
             fy += 28;
         }
@@ -354,7 +963,7 @@ export class Renderer {
         for (let i = 0; i < 8; i++) {
             const sx = W * 0.15 + i * (W * 0.7 / 7);
             const bobble = Math.sin(this.time * 0.05 + i * 1.2) * 3;
-            this._drawSoldier(c, sx, paradeY + bobble, 0.5 + Math.sin(i)*0.1);
+            this._drawSoldier(c, sx, paradeY + bobble, '#5D4037');
         }
 
         // ── DECORATIVE EMPEROR SILHOUETTES on sides ──
@@ -374,45 +983,45 @@ export class Renderer {
         const hbW = 140, hbH = 40, hbX = W/2 - hbW - 15, hbY = btnY;
         this.g._helpBtnRect = { x: hbX, y: hbY, w: hbW, h: hbH };
         const helpGr = c.createLinearGradient(hbX, hbY, hbX, hbY+hbH);
-        helpGr.addColorStop(0, 'rgba(184,154,106,0.2)'); helpGr.addColorStop(1, 'rgba(184,154,106,0.1)');
+        helpGr.addColorStop(0, 'rgba(33,150,243,0.3)'); helpGr.addColorStop(1, 'rgba(33,150,243,0.15)');
         this._rr(c, hbX, hbY, hbW, hbH, 10); c.fillStyle = helpGr; c.fill();
-        c.strokeStyle = '#b7950b'; c.lineWidth = 2;
+        c.strokeStyle = '#1976D2'; c.lineWidth = 2;
         this._rr(c, hbX, hbY, hbW, hbH, 10); c.stroke();
-        c.fillStyle = '#f5e6c8'; c.font = 'bold 14px "Segoe UI", sans-serif';
+        c.fillStyle = '#1565C0'; c.font = 'bold 14px "Segoe UI", sans-serif';
         c.textAlign = 'center'; c.textBaseline = 'middle';
-        c.fillText('📜 How to Play', hbX + hbW/2, hbY + hbH/2);
+        c.fillText('How to Play', hbX + hbW/2, hbY + hbH/2);
 
         // Play button (big and prominent)
         const pbW = 140, pbH = 40, pbX = W/2 + 15, pbY = btnY;
         const hasSave = !!localStorage.getItem('emperorsConquest_save');
         this.g._continueBtnRect = null;
         const playGr = c.createLinearGradient(pbX, pbY, pbX, pbY+pbH);
-        playGr.addColorStop(0, '#c0392b'); playGr.addColorStop(1, '#922b21');
+        playGr.addColorStop(0, '#E53935'); playGr.addColorStop(1, '#C62828');
         this._rr(c, pbX, pbY, pbW, pbH, 10); c.fillStyle = playGr; c.fill();
-        c.strokeStyle = '#e74c3c'; c.lineWidth = 2;
+        c.strokeStyle = '#EF5350'; c.lineWidth = 2;
         this._rr(c, pbX, pbY, pbW, pbH, 10); c.stroke();
-        c.fillStyle = '#ffd700'; c.font = 'bold 14px "Segoe UI", sans-serif';
-        c.fillText('⚔ New Game', pbX + pbW/2, pbY + pbH/2);
+        c.fillStyle = '#FFFFFF'; c.font = 'bold 14px "Segoe UI", sans-serif';
+        c.fillText('New Game', pbX + pbW/2, pbY + pbH/2);
 
         // Continue button (if save exists)
         if (hasSave) {
             const ctW = 140, ctH = 40, ctX = W/2 - ctW/2, ctY = btnY + 48;
             this.g._continueBtnRect = { x: ctX, y: ctY, w: ctW, h: ctH };
             const ctGr = c.createLinearGradient(ctX, ctY, ctX, ctY+ctH);
-            ctGr.addColorStop(0, '#196f3d'); ctGr.addColorStop(1, '#145a32');
+            ctGr.addColorStop(0, '#43A047'); ctGr.addColorStop(1, '#2E7D32');
             this._rr(c, ctX, ctY, ctW, ctH, 10); c.fillStyle = ctGr; c.fill();
-            c.strokeStyle = '#27ae60'; c.lineWidth = 2;
+            c.strokeStyle = '#66BB6A'; c.lineWidth = 2;
             this._rr(c, ctX, ctY, ctW, ctH, 10); c.stroke();
-            c.fillStyle = '#2ecc71'; c.font = 'bold 14px "Segoe UI", sans-serif';
-            c.fillText('🏆 Continue', ctX + ctW/2, ctY + ctH/2);
+            c.fillStyle = '#FFFFFF'; c.font = 'bold 14px "Segoe UI", sans-serif';
+            c.fillText('Continue', ctX + ctW/2, ctY + ctH/2);
         }
 
         // Pulsing "Click to begin" text
         if (Math.floor(this.time / 25) % 2 === 0) {
-            c.fillStyle = '#ffd700'; c.font = 'bold 18px Georgia, serif';
+            c.fillStyle = '#E65100'; c.font = 'bold 18px Georgia, serif';
             c.textAlign = 'center';
-            c.shadowColor = 'rgba(255,215,0,0.4)'; c.shadowBlur = 8;
-            c.fillText('✨ Click New Game to begin your conquest ✨', W/2, H*0.94);
+            c.shadowColor = 'rgba(230,81,0,0.3)'; c.shadowBlur = 8;
+            c.fillText('Click New Game to begin your conquest', W/2, H*0.94);
             c.shadowColor = 'transparent'; c.shadowBlur = 0;
         }
     }
@@ -582,10 +1191,10 @@ export class Renderer {
             c.fillStyle = '#f5e6c8'; c.font = 'bold 13px "Segoe UI", sans-serif';
             c.fillText(em.name, x+cw/2, y+58);
             // Era
-            c.fillStyle = '#b89a6a'; c.font = '10px "Segoe UI", sans-serif';
+            c.fillStyle = '#795548'; c.font = '10px "Segoe UI", sans-serif';
             c.fillText(em.era, x+cw/2, y+75);
             // Bonus text
-            c.fillStyle = '#ffd700'; c.font = '10px "Segoe UI", sans-serif';
+            c.fillStyle = '#E65100'; c.font = '10px "Segoe UI", sans-serif';
             const words = em.bonus.split(' ');
             let ly = y + 95;
             for (let wi = 0; wi < words.length; wi += 3) {
@@ -605,7 +1214,7 @@ export class Renderer {
         const pw = 540, ph = 520, px = (W - pw)/2, py = (H - ph)/2;
         // Panel background
         const panelGr = c.createLinearGradient(px, py, px+pw, py+ph);
-        panelGr.addColorStop(0, '#2c1810'); panelGr.addColorStop(1, '#3d2b1f');
+        panelGr.addColorStop(0, '#FFFFFF'); panelGr.addColorStop(1, '#FFF8E1');
         this._rr(c, px, py, pw, ph, 16); c.fillStyle = panelGr; c.fill();
         c.strokeStyle = '#b7950b'; c.lineWidth = 2;
         this._rr(c, px, py, pw, ph, 16); c.stroke();
@@ -638,7 +1247,7 @@ export class Renderer {
             c.textAlign = 'left';
             c.fillStyle = sec.color; c.font = 'bold 13px "Segoe UI", sans-serif';
             c.fillText(sec.header, px + 30, sy);
-            c.fillStyle = '#f5e6c8'; c.font = '12px "Segoe UI", sans-serif';
+            c.fillStyle = '#4E342E'; c.font = '12px "Segoe UI", sans-serif';
             c.fillText(sec.text, px + 105, sy);
             sy += 28;
         }
@@ -722,10 +1331,10 @@ export class Renderer {
             c.font = '42px serif'; c.fillStyle = d.color;
             c.fillText(d.icon, bx + btnW/2, by + 45);
             // Label
-            c.font = 'bold 24px Georgia, serif'; c.fillStyle = '#f5e6c8';
+            c.font = 'bold 24px Georgia, serif'; c.fillStyle = '#4E342E';
             c.fillText(d.label, bx + btnW/2, by + 80);
             // Description
-            c.font = '12px "Segoe UI", sans-serif'; c.fillStyle = '#b89a6a';
+            c.font = '12px "Segoe UI", sans-serif'; c.fillStyle = '#795548';
             c.fillText(d.desc, bx + btnW/2, by + 108);
             // Detail
             c.font = '11px "Segoe UI", sans-serif'; c.fillStyle = '#8a7a6a';
@@ -820,30 +1429,107 @@ export class Renderer {
 
                 const p1 = this.toScr(t.cx, t.cy), p2 = this.toScr(T(a).cx, T(a).cy);
                 const em = EMPIRES[s.owner];
-                const soldierCount = Math.min(Math.floor(s.troops / 3), 3);
-                for (let i = 0; i < soldierCount; i++) {
-                    const speed = 0.008 + i * 0.003;
-                    const offset = (this.time * speed + i * 0.33 + t.id * 0.17) % 1;
-                    const sx = p1.x + (p2.x - p1.x) * offset;
-                    const sy = p1.y + (p2.y - p1.y) * offset;
-                    // Bob up and down
-                    const bob = Math.sin(this.time * 0.1 + i * 2 + t.id) * 2;
-                    const sz = Math.max(6, 8 * this.scale);
+                const soldierCount = Math.min(Math.floor(s.troops / 2), 5);
+                const dx = p2.x - p1.x, dy = p2.y - p1.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const dirX = dx / dist, dirY = dy / dist;
+                // Perpendicular direction for formation spread
+                const perpX = -dirY, perpY = dirX;
 
-                    c.fillStyle = em.color + '80';
-                    // Body
-                    c.fillRect(sx - sz * 0.4, sy - sz + bob, sz * 0.8, sz);
-                    // Head
-                    c.beginPath(); c.arc(sx, sy - sz * 1.2 + bob, sz * 0.35, 0, Math.PI * 2); c.fill();
-                    // Weapon (spear line)
-                    c.strokeStyle = em.color + '60'; c.lineWidth = 1;
-                    c.beginPath(); c.moveTo(sx + sz * 0.4, sy - sz * 0.5 + bob);
-                    c.lineTo(sx + sz * 0.4, sy - sz * 2 + bob); c.stroke();
-                    // Legs animation
-                    const legPhase = Math.sin(this.time * 0.15 + i * 1.5);
-                    c.fillStyle = em.color + '60';
-                    c.fillRect(sx - sz * 0.3 + legPhase * 2, sy + bob, sz * 0.25, sz * 0.5);
-                    c.fillRect(sx + sz * 0.05 - legPhase * 2, sy + bob, sz * 0.25, sz * 0.5);
+                for (let i = 0; i < soldierCount; i++) {
+                    const speed = 0.006 + i * 0.002;
+                    const offset = (this.time * speed + i * 0.2 + t.id * 0.17) % 1;
+                    // Formation offset (soldiers march in a line)
+                    const formOffset = (i - (soldierCount - 1) / 2) * 8;
+                    const sx = p1.x + dx * offset + perpX * formOffset;
+                    const sy = p1.y + dy * offset + perpY * formOffset;
+                    // Running bounce animation
+                    const runCycle = Math.sin(this.time * 0.18 + i * 1.8 + t.id) * 3;
+                    const leanForward = 2; // lean in direction of movement
+                    const sz = Math.max(7, 9 * this.scale);
+
+                    // Dust trail behind soldier
+                    if (offset > 0.1) {
+                        const dustAlpha = 0.15 * (1 - offset);
+                        c.fillStyle = `rgba(180,160,120,${dustAlpha})`;
+                        for (let d = 0; d < 3; d++) {
+                            const dustX = sx - dirX * (8 + d * 6) + (Math.sin(this.time * 0.1 + d + i) * 3);
+                            const dustY = sy - dirY * (8 + d * 6) + runCycle * 0.5 + (Math.cos(this.time * 0.08 + d) * 2);
+                            c.beginPath();
+                            c.arc(dustX, dustY, 1.5 + d * 0.5, 0, Math.PI * 2);
+                            c.fill();
+                        }
+                    }
+
+                    // Shadow
+                    c.fillStyle = 'rgba(180,140,80,0.18)';
+                    c.beginPath();
+                    c.ellipse(sx, sy + sz * 1.1, sz * 0.5, sz * 0.15, 0, 0, Math.PI * 2);
+                    c.fill();
+
+                    // Legs with running animation
+                    const legSwing = Math.sin(this.time * 0.2 + i * 1.5 + t.id) * 6;
+                    c.fillStyle = em.dark + 'bb';
+                    c.save();
+                    c.translate(sx, sy + runCycle * 0.5);
+                    // Left leg
+                    c.fillRect(-sz * 0.25 + legSwing * 0.3, sz * 0.1, sz * 0.2, sz * 0.55);
+                    // Right leg
+                    c.fillRect(sz * 0.05 - legSwing * 0.3, sz * 0.1, sz * 0.2, sz * 0.55);
+
+                    // Body with armor gradient
+                    const bodyGr = c.createLinearGradient(-sz * 0.4, -sz * 0.5, sz * 0.4, sz * 0.2);
+                    bodyGr.addColorStop(0, em.light);
+                    bodyGr.addColorStop(1, em.dark);
+                    c.fillStyle = bodyGr;
+                    c.fillRect(-sz * 0.4, -sz * 0.5, sz * 0.8, sz * 0.7);
+
+                    // Belt
+                    c.fillStyle = '#c8a84e';
+                    c.fillRect(-sz * 0.4, -sz * 0.0, sz * 0.8, sz * 0.12);
+
+                    // Shield (on the back)
+                    c.fillStyle = em.color + 'aa';
+                    c.beginPath();
+                    c.ellipse(-sz * 0.45, -sz * 0.15, sz * 0.25, sz * 0.35, 0, 0, Math.PI * 2);
+                    c.fill();
+                    c.strokeStyle = '#ffd700';
+                    c.lineWidth = 0.8;
+                    c.beginPath();
+                    c.ellipse(-sz * 0.45, -sz * 0.15, sz * 0.25, sz * 0.35, 0, 0, Math.PI * 2);
+                    c.stroke();
+
+                    // Head with helmet
+                    c.fillStyle = '#888';
+                    c.beginPath();
+                    c.arc(0, -sz * 0.8, sz * 0.32, 0, Math.PI * 2);
+                    c.fill();
+                    // Helmet crest
+                    c.fillStyle = em.color;
+                    c.fillRect(-sz * 0.05, -sz * 1.15, sz * 0.1, sz * 0.2);
+
+                    // Spear (carried while running)
+                    c.strokeStyle = '#8B7355';
+                    c.lineWidth = 1.5;
+                    const spearAngle = Math.sin(this.time * 0.12 + i) * 0.1;
+                    c.save();
+                    c.translate(sz * 0.35, -sz * 0.2);
+                    c.rotate(-0.3 + spearAngle);
+                    c.beginPath();
+                    c.moveTo(0, sz * 0.5);
+                    c.lineTo(0, -sz * 2);
+                    c.stroke();
+                    // Spear tip
+                    c.fillStyle = '#ccc';
+                    c.beginPath();
+                    c.moveTo(0, -sz * 2);
+                    c.lineTo(-sz * 0.12, -sz * 1.6);
+                    c.lineTo(sz * 0.12, -sz * 1.6);
+                    c.closePath();
+                    c.fill();
+                    c.restore();
+
+                    c.restore();
                 }
             }
         }
@@ -1053,7 +1739,7 @@ export class Renderer {
     _drawSoldier(c, x, y, color, swinging, time, phase) {
         const sz = 10;
         // Shadow
-        c.fillStyle = 'rgba(0,0,0,0.3)';
+        c.fillStyle = 'rgba(180,140,80,0.25)';
         c.beginPath();
         c.ellipse(x, y + sz * 1.2, sz * 0.5, sz * 0.2, 0, 0, Math.PI * 2);
         c.fill();
@@ -1157,18 +1843,58 @@ export class Renderer {
             }
 
             if (isMoveT) {
+                const pulse = 0.3 + Math.sin(this.time * 0.08) * 0.15;
                 drawPoly();
-                c.fillStyle = 'rgba(46,204,113,'+(0.3+Math.sin(this.time*0.08)*0.15)+')';
+                c.fillStyle = `rgba(46,204,113,${pulse})`;
                 c.fill();
+                // Animated green dashed border
+                c.save();
+                drawPoly();
+                c.setLineDash([8, 4]);
+                c.lineDashOffset = -this.time * 0.5;
+                c.strokeStyle = 'rgba(46,204,113,0.7)';
+                c.lineWidth = 2;
+                c.stroke();
+                c.restore();
             }
             if (isAtkT) {
+                const pulse = 0.35 + Math.sin(this.time * 0.08) * 0.15;
                 drawPoly();
-                c.fillStyle = 'rgba(231,76,60,'+(0.35+Math.sin(this.time*0.08)*0.15)+')';
+                c.fillStyle = `rgba(231,76,60,${pulse})`;
                 c.fill();
+                // Animated red danger border
+                c.save();
+                drawPoly();
+                c.setLineDash([6, 3]);
+                c.lineDashOffset = this.time * 0.8;
+                c.strokeStyle = 'rgba(231,76,60,0.8)';
+                c.lineWidth = 2;
+                c.stroke();
+                c.restore();
             }
             if (isSel) {
+                // Multi-layer animated golden glow
+                const glowPulse = 0.25 + Math.sin(this.time * 0.06) * 0.1;
+                // Outer glow ring
+                c.save();
+                c.shadowColor = '#ffd700';
+                c.shadowBlur = 15 + Math.sin(this.time * 0.05) * 5;
                 drawPoly();
-                c.fillStyle = 'rgba(255,215,0,0.35)'; c.fill();
+                c.fillStyle = `rgba(255,215,0,${glowPulse})`;
+                c.fill();
+                c.strokeStyle = '#ffd700';
+                c.lineWidth = 2.5;
+                c.stroke();
+                c.restore();
+                // Inner animated dash ring
+                c.save();
+                drawPoly();
+                c.setLineDash([10, 5]);
+                c.lineDashOffset = -this.time * 0.7;
+                c.strokeStyle = 'rgba(255,255,200,0.6)';
+                c.lineWidth = 1.5;
+                c.stroke();
+                c.restore();
             }
             if (isHov && !isSel) {
                 drawPoly();
@@ -1179,7 +1905,7 @@ export class Renderer {
             c.save();
             c.translate(3, 4);
             drawPoly();
-            c.fillStyle = 'rgba(0,0,0,0.25)';
+            c.fillStyle = 'rgba(80,60,40,0.2)';
             c.fill();
             c.restore();
 
@@ -1209,7 +1935,8 @@ export class Renderer {
             drawPoly();
             const borderColor = isSel ? '#ffd700' : (isHov ? '#ffd700' : (em ? em.color + 'cc' : 'rgba(100,80,60,0.5)'));
             c.strokeStyle = borderColor;
-            c.lineWidth = (isSel ? 3 : (isHov ? 2.5 : 1.5)) * this.scale;
+            const borderPulse = em ? (1.5 + Math.sin(this.time * 0.03 + t.id * 0.5) * 0.3) : 1.5;
+            c.lineWidth = (isSel ? 3 : (isHov ? 2.5 : borderPulse)) * this.scale;
             c.stroke();
 
             // ── Glow effect for selected/hovered ──
@@ -1257,7 +1984,7 @@ export class Renderer {
             c.font = `bold ${Math.round(22*this.scale)}px "Segoe UI", sans-serif`;
             c.textAlign = 'center'; c.textBaseline = 'middle';
             // Add text shadow for readability
-            c.shadowColor = 'rgba(0,0,0,0.8)';
+            c.shadowColor = 'rgba(100,80,60,0.5)';
             c.shadowBlur = 6;
             c.shadowOffsetX = 1;
             c.shadowOffsetY = 2;
@@ -1271,7 +1998,7 @@ export class Renderer {
             // ── Territory name below ──
             c.fillStyle = '#fff';
             c.font = `bold ${Math.round(11*this.scale)}px "Segoe UI", sans-serif`;
-            c.shadowColor = 'rgba(0,0,0,0.8)';
+            c.shadowColor = 'rgba(100,80,60,0.5)';
             c.shadowBlur = 4;
             c.fillText(t.name, p.x, p.y + 22*this.scale);
             c.shadowColor = 'transparent';
@@ -1281,7 +2008,7 @@ export class Renderer {
             if (em && (isSel || isHov)) {
                 c.fillStyle = '#ffd700';
                 c.font = `bold ${Math.round(10*this.scale)}px "Segoe UI", sans-serif`;
-                c.shadowColor = 'rgba(0,0,0,0.8)';
+                c.shadowColor = 'rgba(100,80,60,0.5)';
                 c.shadowBlur = 3;
                 c.fillText(em.name, p.x, p.y - 28*this.scale);
                 c.shadowColor = 'transparent';
@@ -1428,7 +2155,7 @@ export class Renderer {
         // Draw tooltip text
         c.textAlign = 'left'; c.textBaseline = 'top';
         for (let i = 0; i < lines.length; i++) {
-            c.fillStyle = i === 0 ? '#ffd700' : (i === 1 ? '#ccc' : '#fff');
+            c.fillStyle = i === 0 ? '#E65100' : (i === 1 ? '#757575' : '#424242');
             c.font = i === 0 ? 'bold 14px "Segoe UI", sans-serif' : '12px "Segoe UI", sans-serif';
             c.fillText(lines[i], tx + pad, ty + pad + i * lineH);
         }
@@ -1444,7 +2171,7 @@ export class Renderer {
         const draw3DBtn = (bx, by, bw, bh, baseR, baseG, baseB, isActive) => {
             const r = 8;
             // Shadow (3px below)
-            c.fillStyle = 'rgba(0,0,0,0.45)';
+            c.fillStyle = 'rgba(200,180,150,0.4)';
             this._rr(c, bx + 2, by + 3, bw, bh, r); c.fill();
             // Main button body with gradient
             if (isActive) {
@@ -1470,29 +2197,29 @@ export class Renderer {
             }
         };
 
-        // ── Top bar (65px) - brown with gold accents ──
+        // ── Top bar (65px) - bright with colorful accents ──
         const TOP_H = 65;
         const hudGr = c.createLinearGradient(0, 0, 0, TOP_H);
-        hudGr.addColorStop(0, 'rgba(44,24,16,0.94)');
-        hudGr.addColorStop(1, 'rgba(60,35,20,0.90)');
+        hudGr.addColorStop(0, 'rgba(255, 248, 225, 0.95)');
+        hudGr.addColorStop(1, 'rgba(255, 243, 224, 0.92)');
         c.fillStyle = hudGr; c.fillRect(0, 0, W, TOP_H);
-        c.fillStyle = '#b89a6a'; c.fillRect(0, TOP_H - 2, W, 2);
+        c.fillStyle = '#E65100'; c.fillRect(0, TOP_H - 2, W, 2);
 
         // Empire color bar and name
         c.fillStyle = em.color; c.fillRect(10, 8, 6, 49);
-        c.fillStyle = '#f5e6c8'; c.font = 'bold 18px "Segoe UI", sans-serif'; c.textAlign = 'left'; c.textBaseline = 'middle';
+        c.fillStyle = '#D32F2F'; c.font = 'bold 18px "Segoe UI", sans-serif'; c.textAlign = 'left'; c.textBaseline = 'middle';
         c.fillText(em.name, 24, 22);
 
         // Stats row
         c.font = '14px "Segoe UI", sans-serif';
-        c.fillStyle = '#ffd700';
+        c.fillStyle = '#E65100';
         c.fillText(`Coins: ${emp.coins}`, 24, 48);
-        c.fillStyle = '#e8d5b0';
+        c.fillStyle = '#5D4037';
         c.fillText(`Territories: ${emp.tids.length}/${TERRITORIES.length}`, 155, 48);
 
         // Conquest progress bar (wider)
         const progW = 120, progH = 10, progX = 340, progY = 42;
-        c.fillStyle = 'rgba(0,0,0,0.4)'; this._rr(c, progX, progY, progW, progH, 5); c.fill();
+        c.fillStyle = 'rgba(200,200,200,0.3)'; this._rr(c, progX, progY, progW, progH, 5); c.fill();
         const progFill = emp.tids.length / TERRITORIES.length;
         if (progFill > 0) {
             const progGr = c.createLinearGradient(progX, 0, progX + progW, 0);
@@ -1500,27 +2227,27 @@ export class Renderer {
             c.fillStyle = progGr;
             this._rr(c, progX, progY, Math.max(5, progW * progFill), progH, 5); c.fill();
         }
-        c.strokeStyle = '#b89a6a'; c.lineWidth = 1; this._rr(c, progX, progY, progW, progH, 5); c.stroke();
+        c.strokeStyle = '#E65100'; c.lineWidth = 1; this._rr(c, progX, progY, progW, progH, 5); c.stroke();
 
         const totalTroops = emp.tids.reduce((s, id) => s + g.ts[id].troops, 0);
-        c.fillStyle = '#b89a6a'; c.fillText(`Troops: ${totalTroops}`, 470, 48);
+        c.fillStyle = '#5D4037'; c.fillText(`Troops: ${totalTroops}`, 470, 48);
 
         // Alive/dead empire count
         const aliveCount = EIDS.filter(id => g.empires[id]?.alive).length;
         c.textAlign = 'right';
-        c.fillStyle = '#b89a6a';
+        c.fillStyle = '#5D4037';
         c.fillText(`Turn ${g.turn}  |  ${aliveCount} empires alive`, W - 15, 22);
-        c.fillStyle = '#ffd700'; c.fillText(g._isAI() ? 'AI Turn' : 'Your Turn', W - 15, 48);
+        c.fillStyle = '#D32F2F'; c.fillText(g._isAI() ? 'AI Turn' : 'Your Turn', W - 15, 48);
 
         // Phase bar
         const msg = g.phaseMsg();
         if (msg) {
             const bh = 32, by = g.H - bh - 40;
-            c.fillStyle = 'rgba(44,24,16,0.75)';
+            c.fillStyle = 'rgba(255, 248, 225, 0.88)';
             this._rr(c, 12, by, W - 24, bh, 8); c.fill();
-            c.strokeStyle = '#8b6914'; c.lineWidth = 1;
+            c.strokeStyle = '#E65100'; c.lineWidth = 1;
             this._rr(c, 12, by, W - 24, bh, 8); c.stroke();
-            c.fillStyle = '#f5e6c8'; c.font = '13px "Segoe UI", sans-serif'; c.textAlign = 'center';
+            c.fillStyle = '#4E342E'; c.font = '13px "Segoe UI", sans-serif'; c.textAlign = 'center';
             c.fillText(msg, W / 2, by + bh / 2);
         }
 
@@ -1605,7 +2332,7 @@ export class Renderer {
                 draw3DBtn(x, by, b._w, btnH, 160, 120, 24, b.active);
                 c.font = btnFont;
                 c.textAlign = 'center';
-                c.fillStyle = b.active ? '#f5e6c8' : '#7a6a5a';
+                c.fillStyle = b.active ? '#4E342E' : '#9E9E9E';
                 c.fillText(b.label, x + b._w / 2, by + btnH / 2);
                 x += b._w + btnGap;
             }
@@ -1626,7 +2353,7 @@ export class Renderer {
         const barX = 10, barY = 49, barW = g.W * 0.45, barH = 5;
         const pct = emp.tids.length / TERRITORIES.length;
 
-        c.fillStyle = 'rgba(0,0,0,0.3)';
+        c.fillStyle = 'rgba(200,180,150,0.3)';
         c.fillRect(barX, barY, barW, barH);
 
         if (pct > 0) {
@@ -1654,21 +2381,21 @@ export class Renderer {
         const py = 55;
         const ph = g.H - py - 55;
 
-        // Dark panel background
+        // Bright panel background
         const panelGr = c.createLinearGradient(px, py, px + panelW, py);
-        panelGr.addColorStop(0, 'rgba(30,18,10,0.92)');
-        panelGr.addColorStop(1, 'rgba(40,24,14,0.88)');
+        panelGr.addColorStop(0, 'rgba(255, 248, 225, 0.93)');
+        panelGr.addColorStop(1, 'rgba(255, 243, 224, 0.90)');
         this._rr(c, px, py, panelW, ph, 10); c.fillStyle = panelGr; c.fill();
-        c.strokeStyle = '#b7950b'; c.lineWidth = 1.5;
+        c.strokeStyle = '#E65100'; c.lineWidth = 1.5;
         this._rr(c, px, py, panelW, ph, 10); c.stroke();
 
         // Title
         c.textAlign = 'center'; c.textBaseline = 'middle';
-        c.fillStyle = '#ffd700'; c.font = 'bold 13px "Segoe UI", sans-serif';
-        c.fillText('\U0001F3DB EMPIRES', px + panelW/2, py + 16);
+        c.fillStyle = '#D32F2F'; c.font = 'bold 13px "Segoe UI", sans-serif';
+        c.fillText('EMPIRES', px + panelW/2, py + 16);
 
         // Divider
-        c.strokeStyle = 'rgba(184,154,106,0.3)'; c.lineWidth = 1;
+        c.strokeStyle = 'rgba(230,81,0,0.3)'; c.lineWidth = 1;
         c.beginPath(); c.moveTo(px + 10, py + 28); c.lineTo(px + panelW - 10, py + 28); c.stroke();
 
         let y = py + 42;
@@ -1684,25 +2411,25 @@ export class Renderer {
             // Background highlight for player
             if (isPlayer) {
                 this._rr(c, px + 4, y - 10, panelW - 8, 30, 4);
-                c.fillStyle = 'rgba(255,215,0,0.15)'; c.fill();
+                c.fillStyle = 'rgba(211,47,47,0.12)'; c.fill();
             }
 
             // Color indicator
-            c.fillStyle = alive ? em.color : '#5a4030';
+            c.fillStyle = alive ? em.color : '#BDBDBD';
             c.fillRect(px + 8, y - 5, 4, 18);
 
             // Empire name
             c.font = `${isPlayer ? 'bold ' : ''}11px "Segoe UI", sans-serif`;
-            c.fillStyle = alive ? (isPlayer ? '#ffd700' : '#f5e6c8') : '#5a4030';
+            c.fillStyle = alive ? (isPlayer ? '#D32F2F' : '#4E342E') : '#BDBDBD';
             c.fillText(em.name.substring(0, 15), px + 18, y + 2);
 
             // Status line
             c.font = '9px "Segoe UI", sans-serif';
             if (alive) {
-                c.fillStyle = '#b89a6a';
+                c.fillStyle = '#795548';
                 c.fillText(`${tCount} terr | ${emp.coins}c`, px + 18, y + 14);
             } else {
-                c.fillStyle = '#922b21';
+                c.fillStyle = '#D32F2F';
                 c.fillText('ELIMINATED', px + 18, y + 14);
             }
 
@@ -1711,16 +2438,16 @@ export class Renderer {
 
         // Player stats at bottom
         y = py + ph - 70;
-        c.strokeStyle = 'rgba(184,154,106,0.3)'; c.lineWidth = 1;
+        c.strokeStyle = 'rgba(230,81,0,0.3)'; c.lineWidth = 1;
         c.beginPath(); c.moveTo(px + 10, y); c.lineTo(px + panelW - 10, y); c.stroke();
 
         const stats = g.stats;
-        c.fillStyle = '#ffd700'; c.font = 'bold 11px "Segoe UI", sans-serif';
+        c.fillStyle = '#D32F2F'; c.font = 'bold 11px "Segoe UI", sans-serif';
         c.textAlign = 'center';
-        c.fillText('\U0001F4CA YOUR STATS', px + panelW/2, y + 14);
+        c.fillText('YOUR STATS', px + panelW/2, y + 14);
 
         c.textAlign = 'left'; c.font = '10px "Segoe UI", sans-serif';
-        c.fillStyle = '#b89a6a';
+        c.fillStyle = '#795548';
         c.fillText(`Kills: ${stats.kills}`, px + 12, y + 30);
         c.fillText(`Conquered: ${stats.conquered}`, px + 100, y + 30);
         c.fillText(`Coins earned: ${stats.coinsEarned}`, px + 12, y + 44);
@@ -1737,12 +2464,12 @@ export class Renderer {
         const pw = 400, ph = 360, px = (g.W - pw)/2, py = (g.H - ph)/2;
 
         // 3D shadow behind panel
-        c.fillStyle = 'rgba(0,0,0,0.4)';
+        c.fillStyle = 'rgba(180,150,100,0.25)';
         this._rr(c, px + 5, py + 5, pw, ph, 14); c.fill();
 
         // Dark panel
         const panelGr = c.createLinearGradient(px, py, px, py+ph);
-        panelGr.addColorStop(0, '#2c1810'); panelGr.addColorStop(1, '#1e1008');
+        panelGr.addColorStop(0, '#FFFFFF'); panelGr.addColorStop(1, '#FFF8E1');
         this._rr(c, px, py, pw, ph, 14); c.fillStyle = panelGr; c.fill();
         c.strokeStyle = '#27ae60'; c.lineWidth = 2.5;
         this._rr(c, px, py, pw, ph, 14); c.stroke();
@@ -1756,20 +2483,20 @@ export class Renderer {
         c.fillText('\uD83C\uDFC3 Move Troops', px + pw/2, py + 32);
         c.shadowColor = 'transparent'; c.shadowBlur = 0;
 
-        c.fillStyle = '#f5e6c8'; c.font = '15px "Segoe UI", sans-serif';
+        c.fillStyle = '#4E342E'; c.font = '15px "Segoe UI", sans-serif';
         c.fillText('From: ' + fromT.name + ' (' + fromS.troops + ' troops)', px + pw/2, py + 65);
         c.fillText('To: ' + toT.name + ' (' + toS.troops + ' troops)', px + pw/2, py + 90);
 
         c.fillStyle = '#b89a6a'; c.font = '14px "Segoe UI", sans-serif';
         c.fillText('Available: ' + available, px + pw/2, py + 120);
-        c.fillStyle = '#ffd700'; c.font = 'bold 20px "Segoe UI", sans-serif';
+        c.fillStyle = '#E65100'; c.font = 'bold 20px "Segoe UI", sans-serif';
         c.fillText('Moving: ' + g.moveAmount, px + pw/2, py + 150);
 
         g.btns = [];
 
         // 3D button helper
         const d3 = (bx, by, bw, bh, topR, topG, topB, botR, botG, botB) => {
-            c.fillStyle = 'rgba(0,0,0,0.25)'; this._rr(c, bx + 2, by + 2, bw, bh, 7); c.fill();
+            c.fillStyle = 'rgba(180,150,100,0.2)'; this._rr(c, bx + 2, by + 2, bw, bh, 7); c.fill();
             const gr = c.createLinearGradient(bx, by, bx, by + bh);
             gr.addColorStop(0, `rgb(${topR},${topG},${topB})`);
             gr.addColorStop(1, `rgb(${botR},${botG},${botB})`);
@@ -1794,7 +2521,7 @@ export class Renderer {
             d3(bx, aby, bw, bh, 232, 213, 176, 200, 180, 140);
             c.strokeStyle = '#8b6914'; c.lineWidth = 1.5;
             this._rr(c, bx, aby, bw, bh, 7); c.stroke();
-            c.fillStyle = '#2c1810'; c.font = 'bold 18px "Segoe UI", sans-serif';
+            c.fillStyle = '#D32F2F'; c.font = 'bold 18px "Segoe UI", sans-serif';
             c.textAlign = 'center'; c.textBaseline = 'middle';
             c.fillText(b.label, bx + bw/2, aby + bh/2);
             bx += bw + bgap;
@@ -1808,7 +2535,7 @@ export class Renderer {
         d3(maX, maY, maW, maH, 184, 149, 11, 139, 105, 20);
         c.strokeStyle = '#b7950b'; c.lineWidth = 1.5;
         this._rr(c, maX, maY, maW, maH, 7); c.stroke();
-        c.fillStyle = '#f5e6c8'; c.font = 'bold 14px "Segoe UI", sans-serif';
+        c.fillStyle = '#4E342E'; c.font = 'bold 14px "Segoe UI", sans-serif';
         c.fillText('\u23E9 Move All', maX + maW/2, maY + maH/2);
 
         // Confirm button
@@ -1854,23 +2581,24 @@ export class Renderer {
         else if (g.state === 'difficulty') this._difficultyScreen();
         else if (g.state === 'empireSelect') this._empSel();
         else if (g.state === 'playing') {
-            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._logPanel();
+            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._logPanel(); this._drawStoryOverlay();
         }
         else if (g.state === 'moveDialog') {
-            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._moveDialog(); this._logPanel();
+            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._moveDialog(); this._logPanel(); this._drawStoryOverlay();
         }
         else if (g.state === 'attack') {
-            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._attackPanel(); this._logPanel();
+            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._attackPanel(); this._logPanel(); this._drawStoryOverlay();
         }
         else if (g.state === 'combat') {
-            this._world(); this._drawCombatAnim(); this._hud(); this._progressBar(); this._logPanel();
+            this._world(); this._drawCombatAnim(); this._hud(); this._progressBar(); this._logPanel(); this._drawStoryOverlay();
         }
         else if (g.state === 'battle') {
-            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._battleOverlay(); this._logPanel();
+            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._battleOverlay(); this._logPanel(); this._drawStoryOverlay();
         }
         else if (g.state === 'shop') {
-            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._shopPanel(); this._logPanel();
+            this._world(); this._hud(); this._progressBar(); this._scoreboard(); this._shopPanel(); this._logPanel(); this._drawStoryOverlay();
         }
+        else if (g.state === 'territory') this._drawTerritoryView();
         else if (g.state === 'gameover') this._defeat();
         else if (g.state === 'victory') this._victory();
     }
@@ -1939,7 +2667,7 @@ export class Renderer {
                 c.fillStyle = isTarget ? '#922b21' : 'rgba(184,154,106,0.15)'; c.fill();
                 c.strokeStyle = isTarget ? '#e74c3c' : '#b7950b'; c.lineWidth = 1;
                 this._rr(c, tx, btnStartY, tw, 26, 5); c.stroke();
-                c.fillStyle = isTarget ? '#ffd700' : '#b89a6a'; c.textAlign = 'center';
+                c.fillStyle = isTarget ? '#E65100' : '#795548'; c.textAlign = 'center';
                 c.fillText(lbl, tx+tw/2, btnStartY+13);
                 tx += tw + 6;
                 if (tx > px + pw - 80) { tx = px + 15; btnStartY += 32; }
@@ -1979,9 +2707,9 @@ export class Renderer {
             g.btns.push(btn);
             this._rr(c, wx, btnStartY, tw, 20, 4);
             c.fillStyle = equipped ? '#b7950b' : 'rgba(184,154,106,0.15)'; c.fill();
-            c.strokeStyle = equipped ? '#ffd700' : '#b7950b'; c.lineWidth = 1;
+            c.strokeStyle = equipped ? '#E65100' : '#FF9800'; c.lineWidth = 1;
             this._rr(c, wx, btnStartY, tw, 20, 4); c.stroke();
-            c.fillStyle = equipped ? '#ffd700' : '#b89a6a'; c.textAlign = 'center';
+            c.fillStyle = equipped ? '#E65100' : '#795548'; c.textAlign = 'center';
             c.fillText(lbl, wx + tw/2, btnStartY + 10);
             wx += tw + 4;
             if (wx > px + pw - 50) { wx = px + 15; btnStartY += 24; }
@@ -2021,7 +2749,7 @@ export class Renderer {
     _battleOverlay() {
         const c = this.ctx, g = this.g, b = g.battle;
         if (!b) return;
-        c.fillStyle = 'rgba(20,12,8,0.8)'; c.fillRect(0, 0, g.W, g.H);
+        c.fillStyle = 'rgba(200,180,160,0.35)'; c.fillRect(0, 0, g.W, g.H);
         const cx = g.W/2, cy = g.H/2;
 
         // Battle panel background
@@ -2135,12 +2863,12 @@ export class Renderer {
         const pw = 560, ph = 640, px = (g.W - pw) / 2, py = (g.H - ph) / 2;
 
         // 3D shadow behind panel
-        c.fillStyle = 'rgba(0,0,0,0.5)';
+        c.fillStyle = 'rgba(180,150,100,0.3)';
         this._rr(c, px + 6, py + 6, pw, ph, 16); c.fill();
 
         // Panel body with rich gradient
         const panelGr = c.createLinearGradient(px, py, px, py + ph);
-        panelGr.addColorStop(0, '#3a2218'); panelGr.addColorStop(0.5, '#2c1810'); panelGr.addColorStop(1, '#1e0f08');
+        panelGr.addColorStop(0, '#FFFFFF'); panelGr.addColorStop(0.5, '#FFF8E1'); panelGr.addColorStop(1, '#FFF3E0');
         this._rr(c, px, py, pw, ph, 16); c.fillStyle = panelGr; c.fill();
 
         // Gold border (double)
@@ -2173,7 +2901,7 @@ export class Renderer {
 
         // Close button (3D)
         const cbx = px + pw - 42, cby = py + 10, cbw = 32, cbh = 32;
-        c.fillStyle = 'rgba(0,0,0,0.3)'; this._rr(c, cbx + 2, cby + 2, cbw, cbh, 8); c.fill();
+        c.fillStyle = 'rgba(180,150,100,0.2)'; this._rr(c, cbx + 2, cby + 2, cbw, cbh, 8); c.fill();
         const cbGr = c.createLinearGradient(cbx, cby, cbx, cby + cbh);
         cbGr.addColorStop(0, '#c0392b'); cbGr.addColorStop(1, '#922b21');
         this._rr(c, cbx, cby, cbw, cbh, 8); c.fillStyle = cbGr; c.fill();
@@ -2204,15 +2932,15 @@ export class Renderer {
             if (chipX + chipW > px + pw - 20) { chipX = px + 20; y += chipH + chipGap; }
 
             // 3D chip
-            c.fillStyle = 'rgba(0,0,0,0.25)'; this._rr(c, chipX + 2, y + 2, chipW, chipH, 6); c.fill();
+            c.fillStyle = 'rgba(180,150,100,0.2)'; this._rr(c, chipX + 2, y + 2, chipW, chipH, 6); c.fill();
             const chipGr = c.createLinearGradient(chipX, y, chipX, y + chipH);
-            chipGr.addColorStop(0, isSel ? '#b7950b' : '#3d2b1f');
-            chipGr.addColorStop(1, isSel ? '#8b6914' : '#2a1f18');
+            chipGr.addColorStop(0, isSel ? '#E65100' : '#FFF3E0');
+            chipGr.addColorStop(1, isSel ? '#8b6914' : '#EF9A9A');
             this._rr(c, chipX, y, chipW, chipH, 6); c.fillStyle = chipGr; c.fill();
             c.strokeStyle = isSel ? '#ffd700' : 'rgba(184,154,106,0.4)'; c.lineWidth = isSel ? 2 : 1;
             this._rr(c, chipX, y, chipW, chipH, 6); c.stroke();
 
-            c.fillStyle = isSel ? '#1a1a2e' : '#f5e6c8'; c.textAlign = 'center';
+            c.fillStyle = isSel ? '#D32F2F' : '#5D4037'; c.textAlign = 'center';
             c.fillText(t.name + ' (' + s.troops + ')', chipX + chipW / 2, y + chipH / 2);
 
             const btn = { label: t.name, fn: () => { g.sel = tid; g.sfx.click(); } };
@@ -2225,7 +2953,7 @@ export class Renderer {
         if (g.sel != null && g.ts[g.sel]) {
             const s = g.ts[g.sel], t = T(g.sel);
             // 3D banner
-            c.fillStyle = 'rgba(0,0,0,0.2)'; this._rr(c, px + 18, y + 2, pw - 36, 32, 6); c.fill();
+            c.fillStyle = 'rgba(200,180,150,0.15)'; this._rr(c, px + 18, y + 2, pw - 36, 32, 6); c.fill();
             const infoGr = c.createLinearGradient(px + 18, y, px + pw - 18, y);
             infoGr.addColorStop(0, 'rgba(255,215,0,0.15)'); infoGr.addColorStop(1, 'rgba(255,215,0,0.05)');
             this._rr(c, px + 18, y, pw - 36, 32, 6); c.fillStyle = infoGr; c.fill();
@@ -2255,12 +2983,12 @@ export class Renderer {
             const isActive = g._shopTab === tab.id;
 
             // 3D tab
-            c.fillStyle = 'rgba(0,0,0,0.3)'; this._rr(c, tx + 2, ty + 2, tabW, tabH, 8); c.fill();
+            c.fillStyle = 'rgba(180,150,100,0.2)'; this._rr(c, tx + 2, ty + 2, tabW, tabH, 8); c.fill();
             const tabGr = c.createLinearGradient(tx, ty, tx, ty + tabH);
             if (isActive) {
                 tabGr.addColorStop(0, tab.color); tabGr.addColorStop(1, tab.color + 'aa');
             } else {
-                tabGr.addColorStop(0, '#3d2b1f'); tabGr.addColorStop(1, '#2a1f18');
+                tabGr.addColorStop(0, '#FFF3E0'); tabGr.addColorStop(1, '#FFE0B2');
             }
             this._rr(c, tx, ty, tabW, tabH, 8); c.fillStyle = tabGr; c.fill();
             c.strokeStyle = isActive ? '#ffd700' : 'rgba(184,154,106,0.3)'; c.lineWidth = isActive ? 2 : 1;
@@ -2286,18 +3014,18 @@ export class Renderer {
         // Helper: draw 3D card
         const drawCard = (cx, cy, cw, ch, canBuy, glowColor) => {
             // Shadow
-            c.fillStyle = 'rgba(0,0,0,0.35)'; this._rr(c, cx + 3, cy + 3, cw, ch, 10); c.fill();
+            c.fillStyle = 'rgba(180,150,100,0.2)'; this._rr(c, cx + 3, cy + 3, cw, ch, 10); c.fill();
             // Card body
             const cardGr = c.createLinearGradient(cx, cy, cx, cy + ch);
-            cardGr.addColorStop(0, canBuy ? '#3d2b1f' : '#1e1410');
-            cardGr.addColorStop(1, canBuy ? '#2a1a10' : '#14100c');
+            cardGr.addColorStop(0, canBuy ? '#FFF8E1' : '#F5F5F5');
+            cardGr.addColorStop(1, canBuy ? '#FFF3E0' : '#EEEEEE');
             this._rr(c, cx, cy, cw, ch, 10); c.fillStyle = cardGr; c.fill();
             // Border with glow
             if (canBuy && glowColor) {
                 const pulse = 0.5 + Math.sin(this.time * 0.06) * 0.3;
                 c.shadowColor = glowColor; c.shadowBlur = 8 * pulse;
             }
-            c.strokeStyle = canBuy ? (glowColor || '#b7950b') : '#3a2a1a'; c.lineWidth = canBuy ? 2 : 1;
+            c.strokeStyle = canBuy ? (glowColor || '#b7950b') : '#E0E0E0'; c.lineWidth = canBuy ? 2 : 1;
             this._rr(c, cx, cy, cw, ch, 10); c.stroke();
             c.shadowColor = 'transparent'; c.shadowBlur = 0;
             // Top highlight
@@ -2322,15 +3050,15 @@ export class Renderer {
                 c.textAlign = 'left'; c.fillStyle = canBuy ? '#f5e6c8' : '#4a3a2a'; c.font = 'bold 15px "Segoe UI", sans-serif';
                 c.fillText(item.name, px + 85, y + 22);
                 // Description
-                c.fillStyle = canBuy ? '#b89a6a' : '#3a2a1a'; c.font = '12px "Segoe UI", sans-serif';
+                c.fillStyle = canBuy ? '#b89a6a' : '#E0E0E0'; c.font = '12px "Segoe UI", sans-serif';
                 c.fillText(item.desc, px + 85, y + 42);
                 // Cost badge
                 const costW = 90, costH = 28, costX = px + pw - 20 - costW, costY = y + 15;
                 const costGr = c.createLinearGradient(costX, costY, costX, costY + costH);
-                costGr.addColorStop(0, canBuy ? '#196f3d' : '#2a1f18');
-                costGr.addColorStop(1, canBuy ? '#145a32' : '#1e1410');
+                costGr.addColorStop(0, canBuy ? '#196f3d' : '#EF9A9A');
+                costGr.addColorStop(1, canBuy ? '#145a32' : '#E57373');
                 this._rr(c, costX, costY, costW, costH, 6); c.fillStyle = costGr; c.fill();
-                c.strokeStyle = canBuy ? '#27ae60' : '#3a2a1a'; c.lineWidth = 1;
+                c.strokeStyle = canBuy ? '#27ae60' : '#E0E0E0'; c.lineWidth = 1;
                 this._rr(c, costX, costY, costW, costH, 6); c.stroke();
                 c.fillStyle = canBuy ? '#2ecc71' : '#4a3a2a'; c.font = 'bold 14px "Segoe UI", sans-serif'; c.textAlign = 'center';
                 c.fillText('\U0001FA99 ' + item.cost, costX + costW / 2, costY + costH / 2);
@@ -2370,10 +3098,10 @@ export class Renderer {
                     // Unlock cost badge
                     const costW = 110, costH = 28, costX = px + pw - 20 - costW, costY = y + 21;
                     const costGr = c.createLinearGradient(costX, costY, costX, costY + costH);
-                    costGr.addColorStop(0, canAfford ? tierColors[tier] : '#2a1f18');
-                    costGr.addColorStop(1, canAfford ? tierColors[tier] + 'aa' : '#1e1410');
+                    costGr.addColorStop(0, canAfford ? tierColors[tier] : '#EF9A9A');
+                    costGr.addColorStop(1, canAfford ? tierColors[tier] + 'aa' : '#EF9A9A');
                     this._rr(c, costX, costY, costW, costH, 6); c.fillStyle = costGr; c.fill();
-                    c.strokeStyle = canAfford ? '#ffd700' : '#3a2a1a'; c.lineWidth = 1;
+                    c.strokeStyle = canAfford ? '#ffd700' : '#E0E0E0'; c.lineWidth = 1;
                     this._rr(c, costX, costY, costW, costH, 6); c.stroke();
                     c.fillStyle = canAfford ? '#ffd700' : '#4a3a2a'; c.font = 'bold 14px "Segoe UI", sans-serif'; c.textAlign = 'center';
                     c.fillText('\U0001F512 ' + costs[tier] + ' coins', costX + costW / 2, costY + costH / 2);
@@ -2395,14 +3123,14 @@ export class Renderer {
                         if (wx + tw > px + pw - 20) { wx = px + 30; y += 34; }
 
                         // 3D weapon chip
-                        c.fillStyle = 'rgba(0,0,0,0.2)'; this._rr(c, wx + 1, y + 1, tw, 28, 5); c.fill();
+                        c.fillStyle = 'rgba(180,150,100,0.15)'; this._rr(c, wx + 1, y + 1, tw, 28, 5); c.fill();
                         const wGr = c.createLinearGradient(wx, y, wx, y + 28);
-                        wGr.addColorStop(0, equipped ? '#b7950b' : '#3d2b1f');
-                        wGr.addColorStop(1, equipped ? '#8b6914' : '#2a1f18');
+                        wGr.addColorStop(0, equipped ? '#E65100' : '#FFF3E0');
+                        wGr.addColorStop(1, equipped ? '#8b6914' : '#EF9A9A');
                         this._rr(c, wx, y, tw, 28, 5); c.fillStyle = wGr; c.fill();
                         c.strokeStyle = equipped ? '#ffd700' : 'rgba(184,154,106,0.4)'; c.lineWidth = equipped ? 2 : 1;
                         this._rr(c, wx, y, tw, 28, 5); c.stroke();
-                        c.fillStyle = equipped ? '#1a1a2e' : '#f5e6c8'; c.textAlign = 'center';
+                        c.fillStyle = equipped ? '#D32F2F' : '#5D4037'; c.textAlign = 'center';
                         c.font = (equipped ? 'bold ' : '') + '12px "Segoe UI", sans-serif';
                         c.fillText(lbl, wx + tw / 2, y + 14);
 
@@ -2432,15 +3160,15 @@ export class Renderer {
                 c.fillStyle = canBuy ? '#ffd700' : '#4a3a2a'; c.fillText('\U0001F575\uFE0F', px + 60, y + 30);
                 c.textAlign = 'left'; c.fillStyle = canBuy ? '#f5e6c8' : '#4a3a2a'; c.font = 'bold 16px "Segoe UI", sans-serif';
                 c.fillText('Spy Network', px + 90, y + 24);
-                c.fillStyle = canBuy ? '#b89a6a' : '#3a2a1a'; c.font = '13px "Segoe UI", sans-serif';
+                c.fillStyle = canBuy ? '#b89a6a' : '#E0E0E0'; c.font = '13px "Segoe UI", sans-serif';
                 c.fillText('Reveal all enemy troop counts on the map', px + 90, y + 46);
                 // Cost badge
                 const costW = 100, costH = 30, costX = px + pw - 20 - costW, costY = y + 20;
                 const costGr = c.createLinearGradient(costX, costY, costX, costY + costH);
-                costGr.addColorStop(0, canBuy ? '#196f3d' : '#2a1f18');
-                costGr.addColorStop(1, canBuy ? '#145a32' : '#1e1410');
+                costGr.addColorStop(0, canBuy ? '#196f3d' : '#EF9A9A');
+                costGr.addColorStop(1, canBuy ? '#145a32' : '#E57373');
                 this._rr(c, costX, costY, costW, costH, 6); c.fillStyle = costGr; c.fill();
-                c.strokeStyle = canBuy ? '#27ae60' : '#3a2a1a'; c.lineWidth = 1;
+                c.strokeStyle = canBuy ? '#27ae60' : '#E0E0E0'; c.lineWidth = 1;
                 this._rr(c, costX, costY, costW, costH, 6); c.stroke();
                 c.fillStyle = canBuy ? '#2ecc71' : '#4a3a2a'; c.font = 'bold 15px "Segoe UI", sans-serif'; c.textAlign = 'center';
                 c.fillText('\U0001FA99 30', costX + costW / 2, costY + costH / 2);
@@ -2460,7 +3188,7 @@ export class Renderer {
         for (let i = g.log.length - 1; i >= start; i--) {
             const age = g.log.length - 1 - i;
             // Shadow for readability
-            c.fillStyle = 'rgba(0,0,0,0.6)';
+            c.fillStyle = 'rgba(180,150,100,0.35)';
             c.fillText(g.log[i], lx + 1, ly + 1);
             c.fillStyle = `rgba(245,230,200,${Math.max(0.5, 1-age*0.15)})`;
             c.fillText(g.log[i], lx, ly);
@@ -2473,28 +3201,79 @@ export class Renderer {
         const c = this.ctx, { W, H } = this.g;
         const stats = this.g.stats;
 
-        // Dark background with red tint
-        const bgGr = c.createRadialGradient(W/2, H/2, 50, W/2, H/2, W*0.8);
-        bgGr.addColorStop(0, '#1a0505'); bgGr.addColorStop(1, '#050202');
+        // Warm background with red aurora
+        const bgGr = c.createRadialGradient(W/2, H*0.3, 50, W/2, H/2, W*0.9);
+        bgGr.addColorStop(0, '#FFEBEE');
+        bgGr.addColorStop(0.4, '#FFCDD2');
+        bgGr.addColorStop(1, '#F8BBD0');
         c.fillStyle = bgGr; c.fillRect(0, 0, W, H);
 
+        // Red aurora bands
+        for (let band = 0; band < 3; band++) {
+            c.save();
+            c.globalAlpha = 0.1 + band * 0.03;
+            c.beginPath();
+            const baseY = H * (0.05 + band * 0.07);
+            c.moveTo(0, baseY);
+            for (let x = 0; x <= W; x += 20) {
+                const y = baseY + Math.sin(x * 0.005 + this.time * 0.008 + band) * 20;
+                c.lineTo(x, y);
+            }
+            c.lineTo(W, baseY + H * 0.06);
+            c.lineTo(0, baseY + H * 0.06);
+            c.closePath();
+            c.fillStyle = ['#EF5350', '#E53935', '#D32F2F'][band];
+            c.fill();
+            c.restore();
+        }
+
+        // Floating particles
+        for (let i = 0; i < 30; i++) {
+            const seed = i * 97.3;
+            const px = ((seed * 5.1 + this.time * (0.2 + (i % 4) * 0.08)) % W);
+            const py = ((seed * 2.3 + this.time * (0.4 + (i % 3) * 0.15)) % H);
+            const sz = 1 + Math.sin(this.time * 0.03 + i) * 0.5;
+            const alpha = 0.15 + Math.sin(this.time * 0.02 + i * 0.3) * 0.08;
+            c.fillStyle = `rgba(231,76,60,${alpha})`;
+            c.beginPath(); c.arc(px, py, sz, 0, Math.PI*2); c.fill();
+        }
+
         c.textAlign = 'center'; c.textBaseline = 'middle';
-        c.shadowColor = 'rgba(146,43,33,0.5)'; c.shadowBlur = 20;
-        c.fillStyle = '#e74c3c'; c.font = 'bold 56px Georgia, serif';
-        c.fillText('☠ DEFEAT ☠', W/2, H*0.18);
-        c.shadowColor = 'transparent'; c.shadowBlur = 0;
-        c.fillStyle = '#b89a6a'; c.font = '18px "Segoe UI", sans-serif';
+
+        // Skull with glow
+        c.save();
+        c.shadowColor = 'rgba(231,76,60,0.7)';
+        c.shadowBlur = 25 + Math.sin(this.time * 0.04) * 8;
+        c.font = '72px serif';
+        c.fillText('☠️', W/2, H*0.08);
+        c.restore();
+
+        // DEFEAT title with animated red glow
+        c.save();
+        const defeatGlow = 18 + Math.sin(this.time * 0.05) * 6;
+        c.shadowColor = 'rgba(146,43,33,0.6)';
+        c.shadowBlur = defeatGlow;
+        c.fillStyle = '#e74c3c'; c.font = 'bold 60px Georgia, serif';
+        c.fillText('DEFEAT', W/2, H*0.18);
+        c.restore();
+
+        c.fillStyle = '#795548'; c.font = '18px "Segoe UI", sans-serif';
         c.fillText(`Your empire fell on turn ${this.g.turn}`, W/2, H*0.18+42);
 
-        // Stats panel - dark style
-        const pw = 340, ph = 220, px = (W - pw)/2, py = H*0.38;
+        // Stats panel
+        const pw = 360, ph = 240, px = (W - pw)/2, py = H*0.38;
+        c.save();
+        c.shadowColor = 'rgba(180,150,100,0.2)'; c.shadowBlur = 15;
         const panelGr = c.createLinearGradient(px, py, px+pw, py+ph);
-        panelGr.addColorStop(0, '#2c1810'); panelGr.addColorStop(1, '#3d2b1f');
+        panelGr.addColorStop(0, '#FFFFFF'); panelGr.addColorStop(1, '#FFF8E1');
         this._rr(c, px, py, pw, ph, 14); c.fillStyle = panelGr; c.fill();
-        c.strokeStyle = '#922b21'; c.lineWidth = 2;
+        c.restore();
+        c.strokeStyle = '#D32F2F'; c.lineWidth = 2;
         this._rr(c, px, py, pw, ph, 14); c.stroke();
+        c.strokeStyle = 'rgba(211,47,47,0.15)'; c.lineWidth = 1;
+        this._rr(c, px+5, py+5, pw-10, ph-10, 11); c.stroke();
 
-        c.fillStyle = '#e74c3c'; c.font = 'bold 16px "Segoe UI", sans-serif';
+        c.fillStyle = '#D32F2F'; c.font = 'bold 16px "Segoe UI", sans-serif';
         c.fillText('Final Statistics', W/2, py + 25);
 
         c.font = '14px "Segoe UI", sans-serif';
@@ -2506,18 +3285,24 @@ export class Renderer {
         ];
         let sy = py + 55;
         for (const s of statLines) {
-            c.textAlign = 'left'; c.fillStyle = '#b89a6a';
+            c.textAlign = 'left'; c.fillStyle = '#5D4037';
             c.fillText(s.label, px + 20, sy);
-            c.textAlign = 'right'; c.fillStyle = '#e74c3c';
+            c.textAlign = 'right'; c.fillStyle = '#D32F2F'; c.font = 'bold 14px "Segoe UI", sans-serif';
             c.fillText(String(s.value), px + pw - 20, sy);
-            sy += 30;
+            c.font = '14px "Segoe UI", sans-serif';
+            if (s !== statLines[statLines.length - 1]) {
+                c.strokeStyle = 'rgba(211,47,47,0.15)'; c.lineWidth = 1;
+                c.beginPath(); c.moveTo(px + 15, sy + 14); c.lineTo(px + pw - 15, sy + 14); c.stroke();
+            }
+            sy += 32;
         }
 
-        if (Math.floor(this.time/30) % 2 === 0) {
-            c.fillStyle = '#ffd700'; c.font = 'bold 18px "Segoe UI", sans-serif';
-            c.textAlign = 'center';
-            c.fillText('Click to return to menu', W/2, H*0.80);
-        }
+        // Pulsing return button
+        const btnAlpha = 0.5 + Math.sin(this.time * 0.05) * 0.3;
+        c.fillStyle = `rgba(211,47,47,${btnAlpha})`;
+        c.font = 'bold 18px "Segoe UI", sans-serif';
+        c.textAlign = 'center';
+        c.fillText('Click to return to menu', W/2, H*0.82);
 
         this._drawSoldier(c, W*0.15, H*0.70, -0.5);
         this._drawSoldier(c, W*0.85, H*0.70, 0.5);
@@ -2529,39 +3314,118 @@ export class Renderer {
         const c = this.ctx, { W, H } = this.g;
         const stats = this.g.stats;
 
-        // Dark background with golden tint
-        const bgGr = c.createRadialGradient(W/2, H/2, 50, W/2, H/2, W*0.8);
-        bgGr.addColorStop(0, '#1a1200'); bgGr.addColorStop(1, '#080600');
+        // Bright golden background with aurora
+        const bgGr = c.createRadialGradient(W/2, H*0.3, 50, W/2, H/2, W*0.9);
+        bgGr.addColorStop(0, '#FFF8E1');
+        bgGr.addColorStop(0.3, '#FFECB3');
+        bgGr.addColorStop(0.7, '#FFE0B2');
+        bgGr.addColorStop(1, '#FFCCBC');
         c.fillStyle = bgGr; c.fillRect(0, 0, W, H);
 
-        // Golden particles
-        for (let i = 0; i < 20; i++) {
-            const px2 = (Math.sin(this.time * 0.015 + i * 2.1) * 0.5 + 0.5) * W;
-            const py2 = (Math.cos(this.time * 0.01 + i * 1.7) * 0.5 + 0.5) * H;
-            const sz = 1.5 + Math.sin(this.time * 0.04 + i) * 1;
-            c.fillStyle = `rgba(255,215,0,${0.15 + Math.sin(this.time*0.03+i)*0.1})`;
+        // Aurora bands
+        for (let band = 0; band < 3; band++) {
+            c.save();
+            c.globalAlpha = 0.08 + band * 0.02;
+            c.beginPath();
+            c.moveTo(0, H * (0.1 + band * 0.08));
+            for (let x = 0; x <= W; x += 20) {
+                const y = H * (0.1 + band * 0.08) + Math.sin(x * 0.005 + this.time * 0.01 + band) * 30;
+                c.lineTo(x, y);
+            }
+            c.lineTo(W, H * (0.2 + band * 0.08));
+            c.lineTo(0, H * (0.2 + band * 0.08));
+            c.closePath();
+            const auroraColors = ['#ffd700', '#ff6b35', '#ff4444'];
+            c.fillStyle = auroraColors[band];
+            c.fill();
+            c.restore();
+        }
+
+        // Golden particle rain
+        for (let i = 0; i < 50; i++) {
+            const seed = i * 137.5;
+            const px2 = ((seed * 7.3 + this.time * (0.3 + (i % 5) * 0.1)) % W);
+            const py2 = ((seed * 3.7 + this.time * (0.5 + (i % 3) * 0.2)) % H);
+            const sz = 1 + Math.sin(this.time * 0.04 + i) * 0.8;
+            const alpha = 0.1 + Math.sin(this.time * 0.03 + i * 0.5) * 0.08;
+            const colors = ['rgba(255,215,0,', 'rgba(255,180,0,', 'rgba(255,100,50,'];
+            c.fillStyle = colors[i % 3] + alpha + ')';
             c.beginPath(); c.arc(px2, py2, sz, 0, Math.PI*2); c.fill();
         }
 
+        // Firework bursts (periodic)
+        for (let fw = 0; fw < 5; fw++) {
+            const phase = (this.time * 0.02 + fw * 1.3) % 3;
+            if (phase < 1.5) {
+                const fwx = W * (0.15 + (fw * 0.175));
+                const fwy = H * (0.1 + fw * 0.05);
+                const burst = phase * 60;
+                const sparkAlpha = Math.max(0, 0.6 - phase * 0.4);
+                const fwColors = ['#ffd700', '#ff6b35', '#00ff88', '#4488ff', '#ff44aa'];
+                for (let sp = 0; sp < 12; sp++) {
+                    const angle = (sp / 12) * Math.PI * 2 + this.time * 0.01;
+                    const sx = fwx + Math.cos(angle) * burst;
+                    const sy = fwy + Math.sin(angle) * burst;
+                    c.fillStyle = fwColors[(fw + sp) % fwColors.length];
+                    c.globalAlpha = sparkAlpha;
+                    c.beginPath(); c.arc(sx, sy, 2, 0, Math.PI*2); c.fill();
+                }
+                c.globalAlpha = 1;
+            }
+        }
+
         c.textAlign = 'center'; c.textBaseline = 'middle';
-        c.shadowColor = 'rgba(255,215,0,0.6)'; c.shadowBlur = 25;
-        c.fillStyle = '#ffd700'; c.font = 'bold 56px Georgia, serif';
-        c.fillText('🏆 VICTORY! 🏆', W/2, H*0.14);
-        c.shadowColor = 'transparent'; c.shadowBlur = 0;
-        c.fillStyle = '#f5e6c8'; c.font = '24px Georgia, serif';
-        c.fillText(`${E(this.g.player).name} conquers all!`, W/2, H*0.14+48);
-        c.font = '48px serif'; c.fillText('👑', W/2, H*0.14+105);
 
-        // Stats panel - dark with gold border
-        const pw = 340, ph = 260, px = (W - pw)/2, py = H*0.42;
+        // Crown with glow
+        c.save();
+        c.shadowColor = 'rgba(255,215,0,0.8)';
+        c.shadowBlur = 30 + Math.sin(this.time * 0.05) * 10;
+        c.font = '72px serif';
+        c.fillText('👑', W/2, H*0.08);
+        c.restore();
+
+        // TITLE with animated glow
+        c.save();
+        const titleGlow = 20 + Math.sin(this.time * 0.04) * 8;
+        c.shadowColor = 'rgba(255,215,0,0.7)';
+        c.shadowBlur = titleGlow;
+        c.fillStyle = '#ffd700'; c.font = 'bold 60px Georgia, serif';
+        c.fillText('VICTORY!', W/2, H*0.18);
+        c.restore();
+
+        // Subtitle
+        c.fillStyle = '#795548'; c.font = '24px Georgia, serif';
+        c.fillText(`${E(this.g.player).name} conquers all!`, W/2, H*0.18 + 48);
+
+        // Empire icon large
+        c.font = '56px serif';
+        c.fillText(E(this.g.player).icon || '', W/2, H*0.18 + 110);
+
+        // Stats panel with bright background
+        const pw = 380, ph = 280, px = (W - pw)/2, py = H*0.45;
+        c.save();
+        c.shadowColor = 'rgba(180,150,100,0.2)';
+        c.shadowBlur = 20;
+        c.shadowOffsetY = 5;
         const panelGr = c.createLinearGradient(px, py, px+pw, py+ph);
-        panelGr.addColorStop(0, '#2c1810'); panelGr.addColorStop(1, '#3d2b1f');
+        panelGr.addColorStop(0, 'rgba(255,248,225,0.97)');
+        panelGr.addColorStop(1, 'rgba(255,243,224,0.97)');
         this._rr(c, px, py, pw, ph, 14); c.fillStyle = panelGr; c.fill();
-        c.strokeStyle = '#ffd700'; c.lineWidth = 2;
-        this._rr(c, px, py, pw, ph, 14); c.stroke();
+        c.restore();
 
-        c.fillStyle = '#ffd700'; c.font = 'bold 16px "Segoe UI", sans-serif';
-        c.fillText('✨ Victory Statistics ✨', W/2, py + 25);
+        // Colorful border
+        c.save();
+        c.shadowColor = 'rgba(255,152,0,0.3)';
+        c.shadowBlur = 10;
+        c.strokeStyle = '#FF9800'; c.lineWidth = 2;
+        this._rr(c, px, py, pw, ph, 14); c.stroke();
+        c.restore();
+        c.strokeStyle = 'rgba(255,152,0,0.2)'; c.lineWidth = 1;
+        this._rr(c, px+5, py+5, pw-10, ph-10, 11); c.stroke();
+
+        c.fillStyle = '#E65100'; c.font = 'bold 16px "Segoe UI", sans-serif';
+        c.textAlign = 'center';
+        c.fillText('Victory Statistics', W/2, py + 25);
 
         c.font = '14px "Segoe UI", sans-serif';
         const statLines = [
@@ -2573,22 +3437,29 @@ export class Renderer {
         ];
         let sy = py + 55;
         for (const s of statLines) {
-            c.textAlign = 'left'; c.fillStyle = '#b89a6a';
+            c.textAlign = 'left'; c.fillStyle = '#5D4037';
             c.fillText(s.label, px + 20, sy);
-            c.textAlign = 'right'; c.fillStyle = '#ffd700';
+            c.textAlign = 'right'; c.fillStyle = '#E65100'; c.font = 'bold 14px "Segoe UI", sans-serif';
             c.fillText(String(s.value), px + pw - 20, sy);
-            sy += 30;
+            c.font = '14px "Segoe UI", sans-serif';
+            // Divider line
+            if (s !== statLines[statLines.length - 1]) {
+                c.strokeStyle = 'rgba(255,152,0,0.2)'; c.lineWidth = 1;
+                c.beginPath(); c.moveTo(px + 15, sy + 14); c.lineTo(px + pw - 15, sy + 14); c.stroke();
+            }
+            sy += 32;
         }
 
-        if (Math.floor(this.time/30) % 2 === 0) {
-            c.fillStyle = '#ffd700'; c.font = 'bold 18px "Segoe UI", sans-serif';
-            c.textAlign = 'center';
-            c.fillText('Click to return to menu', W/2, H*0.88);
-        }
+        // Pulsing "Click to return"
+        const btnAlpha = 0.5 + Math.sin(this.time * 0.05) * 0.3;
+        c.fillStyle = `rgba(255,215,0,${btnAlpha})`;
+        c.font = 'bold 18px "Segoe UI", sans-serif';
+        c.textAlign = 'center';
+        c.fillText('Click to return to menu', W/2, H*0.92);
 
-        this._drawEmperorSilhouette(c, W*0.5, H*0.38, 1.5);
-        this._drawCrossedSwords(c, W*0.3, H*0.85, 1.0);
-        this._drawCrossedSwords(c, W*0.7, H*0.85, 1.0);
+        this._drawEmperorSilhouette(c, W*0.5, H*0.40, 1.5);
+        this._drawCrossedSwords(c, W*0.3, H*0.88, 1.0);
+        this._drawCrossedSwords(c, W*0.7, H*0.88, 1.0);
     }
 
     // ── HELPERS ───────────────────────────────────────────────

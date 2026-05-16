@@ -13,7 +13,7 @@ export class Game {
         this._resize();
         window.addEventListener('resize', () => this._resize());
 
-        // States: menu|empireSelect|playing|attack|battle|shop|gameover|victory|help|moveDialog
+        // States: menu|empireSelect|playing|attack|battle|shop|gameover|victory|help|moveDialog|territory
         this.state = 'menu';
         this.phase = 'select'; // sub-phases within playing: select|move|attack
         this.player = null;
@@ -23,6 +23,9 @@ export class Game {
         this.sel = null;
         this.hover = null;
         this.log = [];
+
+        // Territory view (zoom inside)
+        this._terrView = null; // { tid, zoom: 0->1, soldiers: [...], buildings: [...] }
 
         // AI
         this.aiQ = []; this.aiIdx = -1; this.aiTimer = 0; this.aiDelay = 15;
@@ -109,6 +112,7 @@ export class Game {
         else if (this.state === 'help') this._upHelp();
         else if (this.state === 'moveDialog') this._upMoveDialog();
         else if (this.state === 'difficulty') this._upDifficulty();
+        else if (this.state === 'territory') this._upTerritoryView();
 
         this.input.endFrame();
     }
@@ -303,7 +307,11 @@ export class Game {
     _clickTerr(tid) {
         const s = this.ts[tid];
         if (this.phase === 'select') {
-            if (s.owner === this.player) { this.sel = tid; this.sfx.click(); }
+            if (s.owner === this.player) {
+                // Zoom into territory view
+                this._enterTerritoryView(tid);
+                this.sfx.click();
+            }
             else this.sfx.error();
         } else if (this.phase === 'move') {
             if (tid !== this.sel && s.owner === this.player && adj(this.sel, tid)) {
@@ -325,6 +333,79 @@ export class Game {
                 this._attackTarget = null;
                 this.sfx.click();
             } else this.sfx.error();
+        }
+    }
+
+    // ── TERRITORY VIEW (Zoom Inside) ──────────────────────────
+    _enterTerritoryView(tid) {
+        const t = T(tid);
+        const s = this.ts[tid];
+        // Generate soldiers for the interior view
+        const soldiers = [];
+        const count = Math.min(s.troops, 30); // max 30 visible soldiers
+        for (let i = 0; i < count; i++) {
+            soldiers.push({
+                x: 0.15 + Math.random() * 0.7,
+                y: 0.25 + Math.random() * 0.5,
+                frame: Math.random() * 100,
+                speed: 0.3 + Math.random() * 0.7,
+                dir: Math.random() > 0.5 ? 1 : -1,
+                size: 0.6 + Math.random() * 0.5,
+            });
+        }
+        // Generate buildings
+        const buildings = [];
+        const bCount = Math.min(Math.floor(s.troops / 3) + 1, 6);
+        for (let i = 0; i < bCount; i++) {
+            buildings.push({
+                x: 0.1 + Math.random() * 0.8,
+                y: 0.1 + Math.random() * 0.35,
+                type: ['house','tower','barracks','farm','market','wall'][i % 6],
+                size: 0.8 + Math.random() * 0.6,
+            });
+        }
+        this._terrView = { tid, zoom: 0, soldiers, buildings, time: 0 };
+        this.state = 'territory';
+        this.sel = tid;
+    }
+
+    _exitTerritoryView() {
+        this._terrView = null;
+        this.state = 'playing';
+        this.phase = 'select';
+        this.sel = null;
+        this.sfx.click();
+    }
+
+    _upTerritoryView() {
+        if (!this._terrView) { this._exitTerritoryView(); return; }
+        this._terrView.time++;
+        this._terrView.zoom = Math.min(1, this._terrView.zoom + 0.04);
+
+        if (!this.input.hasClick()) return;
+        const sx = this.input.sx, sy = this.input.sy;
+        this.input.consumeClick();
+
+        // Check back button (top-left)
+        if (sx < 120 && sy < 45) {
+            this._exitTerritoryView();
+            return;
+        }
+
+        // Check action buttons at bottom
+        const W = this.W, H = this.H;
+        const btnW = 130, btnH = 40, btnY = H - 60, gap = 15;
+        const btns = [
+            { label: 'ATTACK', x: W/2 - btnW*1.5 - gap, fn: () => { this.state = 'playing'; this.phase = 'attack'; } },
+            { label: 'MOVE', x: W/2 - btnW/2, fn: () => { this.state = 'playing'; this.phase = 'move'; } },
+            { label: 'SHOP', x: W/2 + btnW/2 + gap, fn: () => { this.state = 'playing'; this.phase = 'select'; this._openShop(); } },
+            { label: 'BACK', x: W/2 + btnW*1.5 + gap*2, fn: () => this._exitTerritoryView() },
+        ];
+        for (const b of btns) {
+            if (sx >= b.x && sx <= b.x + btnW && sy >= btnY && sy <= btnY + btnH) {
+                b.fn();
+                return;
+            }
         }
     }
 
@@ -438,6 +519,8 @@ export class Game {
                     this.killLog[this.player].push(defS.owner);
                     this._log(`${E(defS.owner).name} eliminated! +30 coins`);
                     this.sfx.elim();
+                    // Show eliminated empire's history
+                    this.renderer.showEmpireStory(defS.owner);
                 }
             }
             defS.owner = this.player;
@@ -446,6 +529,12 @@ export class Game {
             emp.tids.push(to);
             this.stats.conquered++;
             this.sfx.capture();
+            // Show territory historical fact on conquest
+            this.renderer.showTerritoryStory(to);
+            // Show empire story periodically (every 2nd conquest)
+            if (this.stats.conquered % 2 === 0) {
+                this.renderer.showEmpireStory(this.player);
+            }
             this.renderer.particles.push(...this._makeParticles(to, E(this.player).light));
             this.renderer.addCaptureAnim(to, E(this.player).color, defColor);
             if (emp.tids.length === TERRITORIES.length) {
@@ -612,6 +701,10 @@ export class Game {
             this._income(this.player);
             this._log(`--- Turn ${this.turn} ---`);
             this.sfx.turn();
+            // Show random history lesson every 5 turns
+            if (this.turn % 5 === 0) {
+                this.renderer.showRandomEmpireStory();
+            }
             return;
         }
 
@@ -654,6 +747,10 @@ export class Game {
 
                 if (a.type === 'attack' && a.result.conquered) {
                     this.renderer.shake = 5;
+                    // Show territory story when AI conquers
+                    this.renderer.showTerritoryStory(a.to);
+                    // Show attacking empire's story occasionally
+                    if (Math.random() < 0.3) this.renderer.showEmpireStory(a.empire);
                     // Check if player was eliminated
                     if (!this.empires[this.player].alive) {
                         this.state = 'gameover';
@@ -672,7 +769,11 @@ export class Game {
                         return;
                     }
                 }
-                if (a.type === 'eliminated') this.sfx.elim();
+                if (a.type === 'eliminated') {
+                    this.sfx.elim();
+                    // Show eliminated empire's history
+                    this.renderer.showEmpireStory(a.empire);
+                }
                 if (a.type === 'attack') this.sfx.battle();
             }
 
