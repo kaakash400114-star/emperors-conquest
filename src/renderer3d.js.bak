@@ -1,0 +1,966 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// renderer3d.js — Emperor's Conquest 3D Engine
+// Heightmap terrain with noise-based topography, vertex-colored terrain types,
+// political border walls, coastline cliffs, and procedural detail.
+// Extends the 2D Renderer for UI overlay.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const { Scene, PerspectiveCamera, WebGLRenderer, DirectionalLight, HemisphereLight,
+        Mesh, Group, InstancedMesh, Sprite, SpriteMaterial, Object3D,
+        BoxGeometry, CapsuleGeometry, SphereGeometry, ConeGeometry, PlaneGeometry,
+        BufferGeometry, BufferAttribute, InstancedBufferAttribute, Line, LineSegments,
+        LineBasicMaterial, ShaderMaterial, MeshStandardMaterial, MeshBasicMaterial,
+        Color, Vector2, Vector3, Raycaster, Matrix4, Float32BufferAttribute,
+        ACESFilmicToneMapping, SRGBColorSpace, BackSide, DoubleSide,
+        FogExp2, CanvasTexture, MOUSE, Spherical, MathUtils } = THREE;
+
+import { Renderer } from './renderer.js';
+import { MAP_W, MAP_H, TERRITORIES, EMPIRES } from './map.js';
+import { ParticleSystem3D } from './particles3d.js';
+import { Weather3D } from './weather3d.js';
+import { DayNight3D } from './daynight3d.js';
+import { Seasons3D } from './seasons3d.js';
+import { Heroes3D } from './heroes3d.js';
+import { Beasts3D } from './beasts3d.js';
+import { Naval3D } from './naval3d.js';
+import { Disasters3D } from './disasters3d.js';
+import { Audio3D } from './audio3d.js';
+import { Visuals3D } from './visuals3d.js';
+import { Armies3D } from './armies3d.js';
+import { Structures3D } from './structures3d.js';
+import { Vegetation3D } from './vegetation3d.js';
+import { Environment3D } from './environment3d.js';
+import { Flags3D } from './flags3d.js';
+import { Battle3D } from './battle3d.js';
+import { Cinematics3D } from './cinematics3d.js';
+import { FogOfWar3D } from './fogofwar3d.js';
+import { Trade3D } from './trade3d.js';
+import { Upgrades3D } from './upgrades3d.js';
+
+// ── World scale: map coords (960x640) → 3D units (96x64) ──
+const WS = 0.1;
+// ── Terrain height profiles ──
+const TERRAIN_H = { plains: 1.0, desert: 0.6, mountains: 3.5, coast: 0.3, island: 0.4, forest: 1.6, peninsula: 0.8 };
+// ── Terrain RGB colors (vertex colors) ──
+const T_RGB = {
+    plains:    [0.42, 0.62, 0.28],  // lush green
+    desert:    [0.86, 0.72, 0.45],  // sandy tan
+    mountains: [0.55, 0.50, 0.48],  // rocky gray
+    coast:     [0.60, 0.70, 0.52],  // coastal sage
+    island:    [0.55, 0.65, 0.40],  // tropical green
+    forest:    [0.20, 0.42, 0.16],  // deep forest
+    peninsula: [0.72, 0.68, 0.45],  // Mediterranean
+};
+const SNOW_RGB  = [0.92, 0.94, 0.96];
+const BEACH_RGB = [0.82, 0.76, 0.55];
+const WATER_RGB = [0.12, 0.28, 0.52];
+
+// ═══════════════════════════════════════════════════════════════════
+//  VALUE NOISE (fast, smooth, multi-octave)
+// ═════════════════════════════════════════════════════════════════
+function _hash(x, y) {
+    const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+    return n - Math.floor(n);
+}
+function _smooth(x, y) {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    const fx = x - ix, fy = y - iy;
+    const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+    const a = _hash(ix, iy), b = _hash(ix + 1, iy);
+    const c = _hash(ix, iy + 1), d = _hash(ix + 1, iy + 1);
+    return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+}
+function fbm(x, y, oct) {
+    let v = 0, a = 1, f = 1, m = 0;
+    for (let i = 0; i < oct; i++) { v += _smooth(x * f, y * f) * a; m += a; a *= 0.5; f *= 2.1; }
+    return v / m;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  POINT IN POLYGON (ray casting)
+// ═════════════════════════════════════════════════════════════════
+function _pip(px, py, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+        if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi)
+            inside = !inside;
+    }
+    return inside;
+}
+
+// ── Distance from point to nearest polygon edge ──
+function _distToEdge(px, py, poly) {
+    let minD = 1e9;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const ax = poly[j][0], ay = poly[j][1], bx = poly[i][0], by = poly[i][1];
+        const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+        let t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        const cx = ax + t * dx, cy = ay + t * dy;
+        const d = Math.sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+        if (d < minD) minD = d;
+    }
+    return minD;
+}
+
+// ── Pre-compute bounding boxes for fast rejection ──
+const _bboxCache = TERRITORIES.map(t => {
+    let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+    for (const p of t.poly) { minX = Math.min(minX, p[0]); minY = Math.min(minY, p[1]); maxX = Math.max(maxX, p[0]); maxY = Math.max(maxY, p[1]); }
+    return { minX, minY, maxX, maxY };
+});
+
+function _findTerritory(mx, my) {
+    for (let i = 0; i < TERRITORIES.length; i++) {
+        const b = _bboxCache[i];
+        if (mx < b.minX || mx > b.maxX || my < b.minY || my > b.maxY) continue;
+        if (_pip(mx, my, TERRITORIES[i].poly)) return i;
+    }
+    return -1;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  TERRAIN MESH BUILDER
+// ═════════════════════════════════════════════════════════════════
+function _buildTerrainMesh() {
+    const RES = 4; // map units per grid cell
+    const cols = Math.floor(MAP_W / RES) + 1;  // 241
+    const rows = Math.floor(MAP_H / RES) + 1;  // 161
+    const worldW = MAP_W * WS;  // 96
+    const worldH = MAP_H * WS;  // 64
+
+    const geo = new PlaneGeometry(worldW, worldH, cols - 1, rows - 1);
+    geo.rotateX(-Math.PI / 2);
+
+    const pos = geo.attributes.position;
+    const vertCount = pos.count;
+    const colors = new Float32Array(vertCount * 3);
+    const territoryIds = new Float32Array(vertCount); // -1 = water
+    const edgeDist = new Float32Array(vertCount);    // distance to territory edge
+
+    // ── Pass 1: assign territory, compute height + color ──
+    for (let i = 0; i < vertCount; i++) {
+        const wx = pos.getX(i);  // -48 to 48
+        const wz = pos.getZ(i);  // -32 to 32
+        // Convert to map coords
+        const mx = (wx + worldW * 0.5) / WS;  // 0 to 960
+        const my = (wz + worldH * 0.5) / WS;  // 0 to 640
+
+        const tid = _findTerritory(mx, my);
+        territoryIds[i] = tid;
+
+        if (tid < 0) {
+            // ── Water ──
+            const depth = fbm(wx * 0.15, wz * 0.15, 3) * 0.3 - 0.15;
+            pos.setY(i, depth);
+            colors[i * 3] = WATER_RGB[0];
+            colors[i * 3 + 1] = WATER_RGB[1];
+            colors[i * 3 + 2] = WATER_RGB[2];
+            edgeDist[i] = 999;
+        } else {
+            const terrain = TERRITORIES[tid].terrain;
+            const poly = TERRITORIES[tid].poly;
+            const baseH = TERRAIN_H[terrain] || 1.0;
+
+            // Edge distance (in map units)
+            const dEdge = _distToEdge(mx, my, poly);
+            edgeDist[i] = dEdge;
+
+            // ── Height computation ──
+            let h = 0;
+            // Large-scale terrain shape
+            const largeNoise = fbm(wx * 0.08 + tid * 3.7, wz * 0.08 + tid * 2.1, 4);
+            // Medium detail
+            const medNoise = fbm(wx * 0.25 + tid * 1.3, wz * 0.25 + tid * 5.7, 3);
+            // Fine detail
+            const fineNoise = fbm(wx * 0.6 + tid * 7.1, wz * 0.6 + tid * 4.3, 2);
+
+            if (terrain === 'mountains') {
+                // Dramatic peaks with ridges
+                h = baseH * (0.4 + largeNoise * 1.2);
+                // Add ridge noise
+                const ridge = 1.0 - Math.abs(fbm(wx * 0.2, wz * 0.2, 3) - 0.5) * 2.0;
+                h += ridge * baseH * 0.6;
+                h += fineNoise * 0.3;
+            } else if (terrain === 'forest') {
+                h = baseH * (0.5 + largeNoise * 0.6);
+                h += medNoise * 0.4;
+                h += fineNoise * 0.15;
+            } else if (terrain === 'desert') {
+                // Sand dunes
+                const dune = Math.sin(wx * 0.4 + largeNoise * 3.0) * 0.5 + 0.5;
+                h = baseH * (0.3 + dune * 0.5 + medNoise * 0.3);
+                h += fineNoise * 0.1;
+            } else if (terrain === 'plains') {
+                // Gentle rolling hills
+                h = baseH * (0.5 + largeNoise * 0.5);
+                h += medNoise * 0.25;
+                h += fineNoise * 0.08;
+            } else if (terrain === 'coast' || terrain === 'island') {
+                h = baseH * (0.4 + largeNoise * 0.5);
+                h += medNoise * 0.2;
+                h += fineNoise * 0.1;
+            } else {
+                h = baseH * (0.4 + largeNoise * 0.5);
+                h += medNoise * 0.3;
+            }
+
+            // ── Coastline falloff: reduce height near edges ──
+            const edgeFade = Math.min(1.0, dEdge / 25.0); // fade over 25 map units
+            const cliffZone = Math.max(0, 1.0 - dEdge / 8.0); // cliff near edge
+            h *= (0.15 + edgeFade * 0.85);
+            // Add small cliff at coastline
+            if (dEdge < 10) h += cliffZone * 0.4;
+
+            // Ensure slight positive height
+            h = Math.max(0.05, h);
+
+            pos.setY(i, h);
+
+            // ── Color computation ──
+            const baseRGB = T_RGB[terrain] || T_RGB.plains;
+            let r = baseRGB[0], g = baseRGB[1], b = baseRGB[2];
+
+            // Height-based variation
+            const hNorm = Math.min(1.0, h / (baseH * 1.8));
+            // Darken valleys slightly
+            r *= (0.85 + hNorm * 0.15);
+            g *= (0.85 + hNorm * 0.15);
+            b *= (0.85 + hNorm * 0.15);
+
+            // Noise color variation (subtle)
+            const colorNoise = fbm(wx * 0.3 + 10, wz * 0.3 + 10, 2);
+            r += (colorNoise - 0.5) * 0.08;
+            g += (colorNoise - 0.5) * 0.06;
+            b += (colorNoise - 0.5) * 0.04;
+
+            // Snow on high mountains
+            if (terrain === 'mountains' && h > baseH * 1.3) {
+                const snowFactor = Math.min(1.0, (h - baseH * 1.3) / (baseH * 0.6));
+                r = r + (SNOW_RGB[0] - r) * snowFactor;
+                g = g + (SNOW_RGB[1] - g) * snowFactor;
+                b = b + (SNOW_RGB[2] - b) * snowFactor;
+            }
+
+            // Beach strip at very edge
+            if (dEdge < 6) {
+                const beachFactor = Math.max(0, 1.0 - dEdge / 6.0);
+                r = r + (BEACH_RGB[0] - r) * beachFactor * 0.5;
+                g = g + (BEACH_RGB[1] - g) * beachFactor * 0.5;
+                b = b + (BEACH_RGB[2] - b) * beachFactor * 0.5;
+            }
+
+            colors[i * 3] = Math.max(0, Math.min(1, r));
+            colors[i * 3 + 1] = Math.max(0, Math.min(1, g));
+            colors[i * 3 + 2] = Math.max(0, Math.min(1, b));
+        }
+    }
+
+    geo.setAttribute('color', new BufferAttribute(colors, 3));
+    geo.computeVertexNormals();
+
+    return { geo, territoryIds, edgeDist, cols, rows };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  POLITICAL BORDER BUILDER
+// ═══════════════════════════════════════════════════════════════════
+function _buildBorders() {
+    // Sample territory edges and check for empire boundaries
+    const borderPts = [];   // political borders (different empire owners)
+    const coastPts = [];     // coastlines (territory edge facing water)
+
+    const SAMPLE_STEP = 6; // sample every 6 map units
+
+    for (const t of TERRITORIES) {
+        const poly = t.poly;
+        for (let i = 0; i < poly.length; i++) {
+            const ax = poly[i][0], ay = poly[i][1];
+            const bx = poly[(i + 1) % poly.length][0], by = poly[(i + 1) % poly.length][1];
+            const edgeLen = Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2);
+            const steps = Math.max(1, Math.floor(edgeLen / SAMPLE_STEP));
+
+            for (let s = 0; s <= steps; s++) {
+                const frac = s / steps;
+                const px = ax + (bx - ax) * frac;
+                const py = ay + (by - ay) * frac;
+
+                // Step outward from edge to find neighbor
+                const cx = (ax + bx) * 0.5, cy = (ay + by) * 0.5;
+                const tcx = t.cx, tcy = t.cy;
+                const nx = cx - tcx, ny = cy - tcy;
+                const nLen = Math.sqrt(nx * nx + ny * ny) || 1;
+                const outX = cx + (nx / nLen) * 15;
+                const outY = cy + (ny / nLen) * 15;
+
+                const neighborTid = _findTerritory(outX, outY);
+
+                // Get height at this point
+                const baseH = TERRAIN_H[t.terrain] || 1.0;
+                const h = baseH * 0.7 + fbm(px * 0.08 + t.id * 3.7, py * 0.08 + t.id * 2.1, 4) * baseH * 0.5;
+                const borderH = Math.max(0.1, h) + 0.15;
+
+                if (neighborTid < 0 || neighborTid === t.id) {
+                    // Coastline or self-border
+                    coastPts.push(px * WS - 48, borderH, py * WS - 32);
+                } else {
+                    // Political border (will be colored dynamically based on ownership)
+                    borderPts.push(px * WS - 48, borderH, py * WS - 32, t.id, neighborTid);
+                }
+            }
+        }
+    }
+    return { borderPts, coastPts };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MAIN 3D RENDERER CLASS
+// ═══════════════════════════════════════════════════════════════════
+export class Renderer3D extends Renderer {
+    constructor(game, glCanvas) {
+        console.log('[3D] Constructor start');
+        super(game);
+        this._glCanvas = glCanvas;
+        this._3dReady = false;
+        this._camTarget = new Vector3(0, 0, 0);
+        try {
+            this._initThree();
+            this._init3DSystems();
+            this._3dReady = true;
+            console.log('[3D] Init complete');
+        } catch(e) {
+            console.error('[3D] INIT FAILED:', e.message, e.stack);
+            // Draw error on UI canvas
+            const c = this.ctx;
+            c.fillStyle = '#ff0000';
+            c.font = '20px monospace';
+            c.fillText('3D INIT ERROR: ' + e.message, 50, 50);
+        }
+    }
+    // ═══════════════════════════════════════════════════════════
+    //  INIT
+    // ═══════════════════════════════════════════════════════════
+    _initThree() {
+        const cv = this._glCanvas;
+        const g = this.g;
+
+        // ── WebGL Renderer ──
+        this._renderer = new WebGLRenderer({
+            canvas: cv, antialias: true, alpha: false,
+            powerPreference: 'high-performance'
+        });
+        this._renderer.setPixelRatio(1);
+        this._renderer.setSize(g.W, g.H);
+        this._renderer.toneMapping = ACESFilmicToneMapping;
+        this._renderer.toneMappingExposure = 1.3;
+        this._renderer.outputColorSpace = SRGBColorSpace;
+
+        // ── Scene ──
+        this._scene = new Scene();
+        this._scene.background = new Color('#506e85');
+        this._scene.fog = null;
+
+        // ── Camera ──
+        this._camera = new PerspectiveCamera(50, g.W / g.H, 0.5, 500);
+        this._camera.position.set(10, 50, 75);
+
+        // ── Orbit Controls ──
+        this._controls = this._createOrbitControls(cv);
+        this._controls.target.set(0, 0, 0);
+
+        // ── Lights ──
+        const hemi = new HemisphereLight('#87CEEB', '#3a2a1a', 0.5);
+        this._scene.add(hemi);
+
+        this._sun = new DirectionalLight('#fff5e0', 2.0);
+        this._sun.position.set(30, 50, 20);
+        this._scene.add(this._sun);
+
+        const fill = new DirectionalLight('#b0c4de', 0.4);
+        fill.position.set(-20, 30, -10);
+        this._scene.add(fill);
+
+        // ── Build World ──
+        this._buildTerrain();
+        this._buildOcean();
+        this._buildSkyDome();
+        this._buildBorders();
+        this._buildLabels();
+
+        // ── Raycaster ──
+        this._raycaster = new Raycaster();
+        this._mouse = new Vector2();
+
+        // ── Resize ──
+        this._onResize = () => {
+            const w = window.innerWidth, h = window.innerHeight;
+            this._camera.aspect = w / h;
+            this._camera.updateProjectionMatrix();
+            this._renderer.setSize(w, h);
+        };
+        window.addEventListener('resize', this._onResize);
+        console.log('[3D] Scene built');
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  INIT 3D SUB-SYSTEMS
+    // ═══════════════════════════════════════════════════════════
+    _init3DSystems() {
+        console.log('[3D] Initializing sub-systems...');
+        try {
+            // Particle system (needed by weather, disasters, etc.)
+            this.particles = new ParticleSystem3D(this);
+            // Weather system
+            this.weather = new Weather3D(this, this.particles);
+            // Day/night cycle
+            this.dayNight = new DayNight3D(this);
+            // Seasonal cycle
+            this.seasons = new Seasons3D(this);
+            // Hero units
+            this.heroes = new Heroes3D(this);
+            // Mythological beasts
+            this.beasts = new Beasts3D(this);
+            // Naval warfare
+            this.naval = new Naval3D(this);
+            // Disaster system
+            this.disasters = new Disasters3D(this);
+            // 3D spatial audio
+            this.audio3d = new Audio3D();
+
+            // Visual enhancements (clouds, god rays, particles, lens flare)
+            this.visuals = new Visuals3D(this);
+
+            // 3D armies on territories
+            this.armies3d = new Armies3D(this);
+
+            // 3D structures/buildings
+            this.structures3d = new Structures3D(this);
+
+            // Vegetation — trees, grass, flowers per terrain
+            this.vegetation = new Vegetation3D(this);
+
+            // Environment — campfires, torches, lava, waterfalls
+            this.environment = new Environment3D(this);
+
+            // Empire flags with waving cloth
+            this.flags = new Flags3D(this);
+
+            // Battle animations
+            this.battle3d = new Battle3D(this);
+
+            // Cinematic camera effects
+            this.cinematics = new Cinematics3D(this);
+
+            // Fog of war
+            this.fogOfWar = new FogOfWar3D(this);
+
+            // Trade routes and caravans
+            this.trade = new Trade3D(this);
+
+            // Construction/upgrade animations
+            this.upgrades = new Upgrades3D(this);
+
+            // Spawn some random beasts in the world
+            this._spawnRandomBeasts();
+
+            console.log('[3D] All sub-systems ready');
+        } catch(e) {
+            console.error('[3D] Sub-system init failed:', e.message, e.stack);
+        }
+    }
+
+    _spawnRandomBeasts() {
+        // Spawn 2-3 random beasts at random land positions
+        const landTerrs = TERRITORIES.filter(t => t.terrain !== 'coast' && t.terrain !== 'island');
+        const beastTypes = ['minotaur', 'hydra', 'pegasus', 'manticore', 'dragon'];
+        const count = 2 + Math.floor(Math.random() * 2);
+        for (let i = 0; i < count; i++) {
+            const t = landTerrs[Math.floor(Math.random() * landTerrs.length)];
+            const type = beastTypes[Math.floor(Math.random() * beastTypes.length)];
+            const pos = new Vector3(t.cx * WS - 48, 1, t.cy * WS - 32);
+            this.beasts.spawnBeast(type, pos);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  TERRAIN (heightmap mesh with vertex colors)
+    // ═══════════════════════════════════════════════════════════
+    _buildTerrain() {
+        try {
+        console.log('[Terrain] Building heightmap...');
+        const { geo, territoryIds } = _buildTerrainMesh();
+        console.log('[Terrain] Built', geo.attributes.position.count, 'vertices');
+
+        // Material — basic unlit vertex colors (eliminates shader/lighting issues)
+        const mat = new MeshBasicMaterial({ vertexColors: true, side: DoubleSide });
+
+        this._terrainMesh = new Mesh(geo, mat);
+        this._terrainMesh.userData = { territoryIds };
+        this._scene.add(this._terrainMesh);
+
+        // Store for ownership color updates
+        this._terrainGeo = geo;
+        this._terrIdData = territoryIds;
+        console.log('[Terrain] Done');
+        } catch(e) { console.error('[Terrain] BUILD ERROR:', e); }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  OCEAN
+    // ═══════════════════════════════════════════════════════════
+    _buildOcean() {
+        const geo = new PlaneGeometry(160, 130, 12, 10);
+        geo.rotateX(-Math.PI / 2);
+        const pos = geo.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+            pos.setY(i, -0.2);
+        }
+        geo.computeVertexNormals();
+
+        const mat = new ShaderMaterial({
+            vertexShader: `
+                uniform float uTime;
+                varying vec2 vUV; varying vec3 vPos;
+                void main() {
+                    vUV = uv;
+                    vec3 p = position;
+                    p.y += sin(p.x * 0.4 + uTime * 0.8) * 0.12 + cos(p.z * 0.3 + uTime * 0.5) * 0.08;
+                    vPos = p;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                }`,
+            fragmentShader: `
+                uniform float uTime;
+                varying vec2 vUV; varying vec3 vPos;
+                void main() {
+                    vec3 deep = vec3(0.04, 0.12, 0.28);
+                    vec3 mid = vec3(0.08, 0.24, 0.42);
+                    vec3 shallow = vec3(0.15, 0.38, 0.55);
+                    float wave = sin(vPos.x * 1.5 + uTime * 1.2) * cos(vPos.z * 1.2 + uTime * 0.8) * 0.5 + 0.5;
+                    vec3 col = mix(deep, mid, wave * 0.5 + 0.3);
+                    col = mix(col, shallow, pow(wave, 3.0) * 0.3);
+                    // Specular highlights
+                    float spec = pow(max(0.0, sin(vPos.x * 2.5 + vPos.z * 1.8 + uTime * 1.5)), 20.0);
+                    col += vec3(0.25, 0.30, 0.35) * spec * 0.2;
+                    // Foam at edges
+                    float foam = smoothstep(0.35, 0.0, abs(sin(vPos.x * 4.0 + uTime * 2.0) * sin(vPos.z * 3.5 + uTime * 1.3)));
+                    col += vec3(0.15, 0.18, 0.2) * foam * 0.1;
+                    gl_FragColor = vec4(col, 0.92);
+                }`,
+            uniforms: { uTime: { value: 0 } },
+            transparent: true, side: DoubleSide
+        });
+
+        this._ocean = new Mesh(geo, mat);
+        this._ocean.position.set(0, -0.15, 0);
+        this._scene.add(this._ocean);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  POLITICAL BORDERS + COASTLINES
+    // ═══════════════════════════════════════════════════════════
+    _buildBorders() {
+        const { borderPts, coastPts } = _buildBorders();
+
+        // ── Coastline lines ──
+        if (coastPts.length >= 6) {
+            const cGeo = new BufferGeometry();
+            cGeo.setAttribute('position', new Float32BufferAttribute(coastPts, 3));
+            const cMat = new LineBasicMaterial({ color: '#d4c5a0', transparent: true, opacity: 0.5 });
+            this._coastLines = new Line(cGeo, cMat);
+            this._scene.add(this._coastLines);
+        }
+
+        // ── Political border lines (static, colored gold) ──
+        if (borderPts.length >= 10) {
+            // borderPts: x, y, z, tid, neighborTid (groups of 5)
+            const bPos = [];
+            for (let i = 0; i < borderPts.length; i += 5) {
+                bPos.push(borderPts[i], borderPts[i + 1], borderPts[i + 2]);
+            }
+            const bGeo = new BufferGeometry();
+            bGeo.setAttribute('position', new Float32BufferAttribute(bPos, 3));
+            const bMat = new LineBasicMaterial({ color: '#c8a84e', transparent: true, opacity: 0.7, linewidth: 1 });
+            this._borderLines = new Line(bGeo, bMat);
+            this._scene.add(this._borderLines);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  TERRITORY LABELS (sprites)
+    // ═══════════════════════════════════════════════════════════
+    _buildLabels() {
+        this._terrLabels = [];
+        for (const t of TERRITORIES) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.font = 'bold 26px Georgia, serif';
+            ctx.fillStyle = '#f0e0c0';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 4;
+            ctx.fillText(t.name, 128, 28);
+            ctx.shadowBlur = 0;
+
+            const tex = new CanvasTexture(canvas);
+            const spriteMat = new SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+            const sprite = new Sprite(spriteMat);
+            const h = TERRAIN_H[t.terrain] || 1.0;
+            sprite.scale.set(10, 2.5, 1);
+            sprite.position.set(t.cx * WS - 48, h + 1.5, t.cy * WS - 32);
+            this._scene.add(sprite);
+            this._terrLabels[t.id] = { sprite, canvas, tex };
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  SKY DOME
+    // ═══════════════════════════════════════════════════════════
+    _buildSkyDome() {
+        const geo = new SphereGeometry(200, 16, 8);
+        const mat = new ShaderMaterial({
+            vertexShader: `
+                varying vec3 vWP;
+                void main() {
+                    vWP = (modelMatrix * vec4(position, 1.0)).xyz;
+                    gl_Position = projectionMatrix * viewMatrix * vec4(vWP, 1.0);
+                }`,
+            fragmentShader: `
+                varying vec3 vWP;
+                void main() {
+                    float h = normalize(vWP).y;
+                    vec3 zenith = vec3(0.15, 0.30, 0.65);
+                    vec3 horizon = vec3(0.50, 0.62, 0.82);
+                    vec3 col = h > 0.0 ? mix(horizon, zenith, pow(h, 0.5)) : mix(horizon, vec3(0.6, 0.65, 0.7), pow(-h, 0.8));
+                    gl_FragColor = vec4(col, 1.0);
+                }`,
+            side: BackSide, depthWrite: false
+        });
+        this._sky = new Mesh(geo, mat);
+        this._scene.add(this._sky);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  ORBIT CONTROLS (no external dependency)
+    // ═══════════════════════════════════════════════════════════
+    _createOrbitControls(element) {
+        const self = this;
+        const ctrl = {
+            target: new Vector3(48, 0, 32), enabled: true, enableDamping: true,
+            dampingFactor: 0.08, minDistance: 12, maxDistance: 120,
+            minPolarAngle: 0.15, maxPolarAngle: Math.PI * 0.47,
+            _spherical: null, _isDown: false, _prevX: 0, _prevY: 0
+        };
+        const offset = new Vector3().copy(self._camera.position).sub(ctrl.target);
+        ctrl._spherical = new Spherical().setFromVector3(offset);
+        ctrl._spherical.phi = Math.min(ctrl._spherical.phi, ctrl.maxPolarAngle);
+
+        element.addEventListener('contextmenu', e => e.preventDefault());
+        element.addEventListener('wheel', e => {
+            if (!ctrl.enabled) return;
+            e.preventDefault();
+            const d = e.deltaY * 0.01;
+            const r = ctrl._spherical.radius;
+            ctrl._spherical.radius = Math.max(ctrl.minDistance, Math.min(ctrl.maxDistance, r + r * d));
+        }, { passive: false });
+
+        element.addEventListener('pointerdown', e => {
+            if (e.button === 2 || e.button === 1) {
+                ctrl._isDown = true; ctrl._prevX = e.clientX; ctrl._prevY = e.clientY;
+            }
+        });
+        window.addEventListener('pointermove', e => {
+            if (!ctrl._isDown) return;
+            const dx = (e.clientX - ctrl._prevX) * 0.005;
+            const dy = (e.clientY - ctrl._prevY) * 0.005;
+            ctrl._prevX = e.clientX; ctrl._prevY = e.clientY;
+            ctrl._spherical.theta -= dx;
+            ctrl._spherical.phi = Math.max(ctrl.minPolarAngle, Math.min(ctrl.maxPolarAngle, ctrl._spherical.phi - dy));
+        });
+        window.addEventListener('pointerup', e => {
+            if (e.button === 2 || e.button === 1) ctrl._isDown = false;
+        });
+
+        ctrl.update = () => {
+            const s = ctrl._spherical;
+            s.radius = Math.max(ctrl.minDistance, Math.min(ctrl.maxDistance, s.radius));
+            const off = new Vector3().setFromSpherical(s);
+            self._camera.position.copy(ctrl.target).add(off);
+            self._camera.lookAt(ctrl.target);
+        };
+        return ctrl;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  PER-FRAME UPDATE
+    // ═══════════════════════════════════════════════════════════
+    _update3D() {
+        if (!this._3dReady) return;
+        const g = this.g;
+        const dt = 0.016;
+        const t = this.time * 0.016;
+
+        // ── Sub-system updates ──
+        if (this.dayNight) this.dayNight.update(dt);
+        if (this.seasons) this.seasons.update(dt);
+        if (this.weather) this.weather.update(dt);
+        if (this.particles) this.particles.update(dt);
+        if (this.heroes) this.heroes.update(dt);
+        if (this.beasts) this.beasts.update(dt);
+        if (this.naval) this.naval.update(dt);
+        if (this.disasters) this.disasters.update(dt);
+        if (this.audio3d) this.audio3d.update(dt, this._camera.position);
+        if (this.visuals) this.visuals.update(dt);
+        if (this.armies3d) this.armies3d.update(dt);
+        if (this.structures3d) this.structures3d.update(dt);
+        if (this.vegetation) this.vegetation.update(dt);
+        if (this.environment) this.environment.update(dt);
+        if (this.flags) this.flags.update(dt);
+        if (this.battle3d) this.battle3d.update(dt);
+        if (this.cinematics) this.cinematics.update(dt);
+        if (this.fogOfWar) this.fogOfWar.update(dt);
+        if (this.trade) this.trade.update(dt);
+        if (this.upgrades) this.upgrades.update(dt);
+
+        // ── Ocean animation ──
+        if (this._ocean) this._ocean.material.uniforms.uTime.value = t;
+
+        // ── Update territory ownership colors (throttled) ──
+        if (this.time % 30 === 0) {
+            this._updateOwnershipColors();
+        }
+
+        // ── Update labels (heavily throttled) ──
+        if (this.time % 60 === 0) {
+            this._updateLabels();
+        }
+
+        // ── Camera follow for territory view ──
+        if (g._terrView != null && g.state === 'territory') {
+            const td = TERRITORIES[g._terrView.tid];
+            if (td) {
+                this._camTarget = new Vector3(td.cx * WS - 48, 0, td.cy * WS - 32);
+                this._controls.target.lerp(this._camTarget, 0.05);
+            }
+        }
+
+        // ── Update orbit controls ──
+        this._controls.update();
+    }
+
+    _updateOwnershipColors() {
+        const g = this.g;
+        if (!this._terrainGeo || !this._terrIdData) return;
+        const colorAttr = this._terrainGeo.attributes.color;
+        if (!colorAttr) return;
+
+        // Pre-compute empire colors as RGB
+        const empRGB = {};
+        for (const eid in EMPIRES) {
+            const c = new Color(EMPIRES[eid].color);
+            empRGB[eid] = [c.r, c.g, c.b];
+        }
+
+        for (let i = 0; i < this._terrIdData.length; i++) {
+            const tid = this._terrIdData[i];
+            if (tid < 0) continue; // skip water
+
+            const s = g.ts[tid];
+            if (!s || !s.owner) continue;
+
+            const eRGB = empRGB[s.owner];
+            if (!eRGB) continue;
+
+            const terrain = TERRITORIES[tid].terrain;
+            const tRGB = T_RGB[terrain] || T_RGB.plains;
+
+            // Blend: 25% empire color, 75% terrain color
+            const blend = 0.25;
+            colorAttr.array[i * 3]     = tRGB[0] * (1 - blend) + eRGB[0] * blend;
+            colorAttr.array[i * 3 + 1] = tRGB[1] * (1 - blend) + eRGB[1] * blend;
+            colorAttr.array[i * 3 + 2] = tRGB[2] * (1 - blend) + eRGB[2] * blend;
+        }
+        colorAttr.needsUpdate = true;
+    }
+
+    _updateLabels() {
+        const g = this.g;
+        for (const t of TERRITORIES) {
+            const label = this._terrLabels[t.id];
+            if (!label) continue;
+            const s = g.ts[t.id];
+            if (!s) continue;
+
+            const ctx = label.canvas.getContext('2d');
+            ctx.clearRect(0, 0, 256, 64);
+            ctx.shadowColor = 'rgba(0,0,0,0.9)';
+            ctx.shadowBlur = 4;
+
+            // Territory name
+            ctx.font = 'bold 24px Georgia, serif';
+            ctx.fillStyle = '#f0e0c0';
+            ctx.textAlign = 'center';
+            ctx.fillText(t.name, 128, 20);
+
+            // Emperor name
+            if (s.owner) {
+                const emp = EMPIRES[s.owner];
+                if (emp && emp.emperor) {
+                    ctx.font = 'italic 15px Georgia, serif';
+                    ctx.fillStyle = emp.color || '#ccc';
+                    ctx.fillText(emp.emperor, 128, 40);
+                }
+            }
+
+            // Troops
+            ctx.font = 'bold 13px Georgia, serif';
+            ctx.fillStyle = '#ffd700';
+            ctx.fillText(s.troops + '', 128, 56);
+            ctx.shadowBlur = 0;
+            label.tex.needsUpdate = true;
+
+            // Hover/select scale
+            const isSel = g.sel === t.id, isHov = g.hover === t.id;
+            const sc = isSel ? 1.4 : isHov ? 1.2 : 1.0;
+            label.sprite.scale.set(10 * sc, 2.5 * sc, 1);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  RAYCASTING (screen → territory)
+    // ═══════════════════════════════════════════════════════════
+    _raycastTerritory(screenX, screenY) {
+        if (!this._3dReady || !this._terrainMesh) return -1;
+        const rect = this._glCanvas.getBoundingClientRect();
+        this._mouse.x = ((screenX - rect.left) / rect.width) * 2 - 1;
+        this._mouse.y = -((screenY - rect.top) / rect.height) * 2 + 1;
+        this._raycaster.setFromCamera(this._mouse, this._camera);
+        const hits = this._raycaster.intersectObject(this._terrainMesh, false);
+        if (hits.length > 0) {
+            // Look up territory from the hit face
+            const face = hits[0].face;
+            if (face) {
+                const idx = face.a; // any vertex of the face
+                const tid = this._terrIdData[idx];
+                return tid >= 0 ? tid : -1;
+            }
+        }
+        return -1;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  OVERRIDE: toScr (3D projection)
+    // ═══════════════════════════════════════════════════════════
+    toScr(x, y) {
+        const vec = new Vector3(x * WS - 48, 2, y * WS - 32);
+        vec.project(this._camera);
+        return {
+            x: (vec.x * 0.5 + 0.5) * this.g.W,
+            y: (-vec.y * 0.5 + 0.5) * this.g.H
+        };
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  OVERRIDE: terrAt (uses 3D raycast)
+    // ═══════════════════════════════════════════════════════════
+    terrAt(sx, sy) {
+        if (this._3dReady && (this.g.state === 'playing' || this.g.state === 'territory')) {
+            return this._raycastTerritory(sx, sy);
+        }
+        return super.terrAt(sx, sy);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  OVERRIDE: MAIN RENDER LOOP
+    // ═══════════════════════════════════════════════════════════
+    render() {
+        try {
+        const g = this.g;
+        const c = this.ctx;
+        this.time++;
+        this._layout();
+
+        const show3D = g.state === 'playing' || g.state === 'moveDialog' ||
+                       g.state === 'attack' || g.state === 'battle' ||
+                       g.state === 'shop' || g.state === 'territory' ||
+                       g.state === 'combat';
+
+        if (show3D && this._3dReady) {
+            c.clearRect(0, 0, g.W, g.H);
+            this._update3D();
+            this._renderer.render(this._scene, this._camera);
+
+            // 2D UI overlay
+            if (g.state === 'playing') this._worldMiniHUD();
+            else if (g.state === 'moveDialog') this._moveDialog();
+            else if (g.state === 'attack') this._attackPanel();
+            else if (g.state === 'combat') this._drawCombatAnim();
+            else if (g.state === 'battle') this._battleOverlay();
+            else if (g.state === 'shop') this._shopPanel();
+            else if (g.state === 'territory') this._drawTerritoryView();
+        } else {
+            this._bg();
+            if (g.state === 'menu') this._menu();
+            else if (g.state === 'help') this._helpScreen();
+            else if (g.state === 'difficulty') this._difficultyScreen();
+            else if (g.state === 'onlineLobby') this._onlineLobbyScreen();
+            else if (g.state === 'empireSelect') this._empSel();
+            else if (g.state === 'gameover') this._defeat();
+            else if (g.state === 'victory') this._victory();
+        }
+
+        // Universal overlays
+        this._drawTransition();
+        this._drawNotifications();
+        this._drawFloats();
+
+        if (this.flash.alpha > 0) {
+            c.fillStyle = this.flash.color.replace(')', `,${this.flash.alpha})`).replace('rgb', 'rgba');
+            c.fillRect(0, 0, g.W, g.H);
+            this.flash.alpha -= 0.03;
+        }
+
+        if (g.state === 'playing' && !g._isAI() && g._autoEndTurnDelay > 0) {
+            this._drawAITurnIndicator();
+        }
+
+        if (g.state !== 'menu' && g.state !== 'combat') {
+            this._drawBackButton();
+        }
+
+        // FPS
+        c.save();
+        c.globalAlpha = 0.4;
+        c.fillStyle = '#0f0';
+        c.font = '10px monospace';
+        c.textAlign = 'right';
+        c.fillText(this._fps + ' FPS (3D)', g.W - 8, g.H - 8);
+        c.restore();
+
+        } catch(e) { console.error('RENDER3D ERROR:', e.message, e.stack); }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  OVERRIDE: _bg
+    // ═══════════════════════════════════════════════════════════
+    _bg() {
+        const show3D = this.g.state === 'playing' || this.g.state === 'moveDialog' ||
+                       this.g.state === 'attack' || this.g.state === 'battle' ||
+                       this.g.state === 'shop' || this.g.state === 'territory';
+        if (show3D) {
+            this.ctx.clearRect(0, 0, this.g.W, this.g.H);
+        } else {
+            super._bg();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  CAMERA FOCUS
+    // ═══════════════════════════════════════════════════════════
+    focusTerritory(tid) {
+        const t = TERRITORIES[tid];
+        if (!t) return;
+        this._camTarget = new Vector3(t.cx * WS - 48, 0, t.cy * WS - 32);
+        this._controls.target.copy(this._camTarget);
+    }
+}

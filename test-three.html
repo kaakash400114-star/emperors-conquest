@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html><head>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+</head><body>
+<div id="out"></div>
+<script type="module">
+try {
+    const { WebGLRenderer, Scene, PerspectiveCamera, BoxGeometry, MeshStandardMaterial, Mesh } = THREE;
+    const out = document.getElementById('out');
+    out.textContent = 'THREE OK: ' + Object.keys(THREE).length + ' exports';
+
+    const r = new WebGLRenderer({ antialias: true });
+    document.body.appendChild(r.domElement);
+    r.setSize(400, 300);
+
+    const s = new Scene();
+    s.background = new THREE.Color('#224466');
+    const cam = new PerspectiveCamera(60, 400/300, 0.1, 100);
+    cam.position.set(0, 2, 5);
+
+    const box = new Mesh(
+        new BoxGeometry(1, 1, 1),
+        new MeshStandardMaterial({ color: '#ff4444' })
+    );
+    s.add(box);
+
+    const light = new THREE.DirectionalLight('#ffffff', 1);
+    light.position.set(5, 10, 5);
+    s.add(light);
+    s.add(new THREE.AmbientLight('#444444'));
+
+    function loop() {
+        box.rotation.y += 0.01;
+        r.render(s, cam);
+        requestAnimationFrame(loop);
+    }
+    loop();
+    out.textContent += ' | RENDERING';
+} catch(e) {
+    document.getElementById('out').textContent = 'ERROR: ' + e.message + '\n' + e.stack;
+}
+</script>
+</body></html>

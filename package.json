@@ -1,0 +1,24 @@
+{
+  "name": "emperors-conquest",
+  "version": "1.0.0",
+  "description": "A turn-based strategy game spanning 3000 years of history. Choose from 10 legendary empires, recruit armies, forge weapons, fortify territories, and conquer the world.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kaakash400114-star/emperors-conquest.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/kaakash400114-star/emperors-conquest/issues"
+  },
+  "homepage": "https://github.com/kaakash400114-star/emperors-conquest#readme",
+  "dependencies": {
+    "ws": "^8.20.1"
+  }
+}

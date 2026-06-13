@@ -1,0 +1,1184 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// renderer3d.js — Emperor's Conquest VOXEL GLOBE Engine
+// Floating 3D voxel sphere with 25 territories, destructible structures,
+// Commander Vision overlay, and combat block-destruction animations.
+// Extends the 2D Renderer for UI overlay.
+// ═══════════════════════════════════════════════════════════════════
+
+const { Scene, PerspectiveCamera, WebGLRenderer, DirectionalLight, HemisphereLight,
+        Mesh, Group, InstancedMesh, Sprite, SpriteMaterial, Object3D,
+        BoxGeometry, SphereGeometry, PlaneGeometry, RingGeometry, BufferGeometry,
+        Line, LineBasicMaterial, MeshStandardMaterial, MeshBasicMaterial,
+        Color, Vector2, Vector3, Raycaster, Matrix4, Float32BufferAttribute,
+        ACESFilmicToneMapping, SRGBColorSpace, BackSide, DoubleSide,
+        FogExp2, CanvasTexture, MOUSE, Spherical, MathUtils, PointsMaterial,
+        Points, PointLight, AmbientLight } = THREE;
+
+import { Renderer } from './renderer.js';
+import { MAP_W, MAP_H, TERRITORIES, EMPIRES } from './map.js';
+
+// ── Globe constants ──
+const GLOBE_R = 8;
+const VOX = 0.22;
+const VOX_RES = 5; // map pixels per voxel
+
+// ── Canvas size for territory lookup ──
+const CW = 960, CH = 640;
+
+// ── Terrain voxel colors ──
+const T_VOX = {
+    plains:    [0.42, 0.62, 0.28],
+    desert:    [0.86, 0.72, 0.45],
+    mountains: [0.55, 0.50, 0.48],
+    coast:     [0.60, 0.70, 0.52],
+    island:    [0.55, 0.65, 0.40],
+    forest:    [0.20, 0.42, 0.16],
+    peninsula: [0.72, 0.68, 0.45],
+};
+
+// ═══════════════════════════════════════════════════════════════════
+//  SEED PRNG
+// ═══════════════════════════════════════════════════════════════════
+function _prng(a) {
+    return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  POINT IN POLYGON
+// ═══════════════════════════════════════════════════════════════════
+function _pip(px, py, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+        if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi)
+            inside = !inside;
+    }
+    return inside;
+}
+
+function _findTerritory(mx, my) {
+    for (let i = 0; i < TERRITORIES.length; i++) {
+        if (_pip(mx, my, TERRITORIES[i].poly)) return i;
+    }
+    return -1;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  BUILD TERRITORY CANVAS (for voxel sampling)
+// ═══════════════════════════════════════════════════════════════════
+function _buildTerritoryCanvas() {
+    const cvs = document.createElement('canvas');
+    cvs.width = CW; cvs.height = CH;
+    const ctx = cvs.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, CW, CH);
+    for (let i = 0; i < TERRITORIES.length; i++) {
+        const t = TERRITORIES[i];
+        const r = (i + 1), g2 = (i * 3 + 7) % 256, b = (i * 7 + 13) % 256;
+        ctx.fillStyle = `rgb(${r},${g2},${b})`;
+        ctx.strokeStyle = ctx.fillStyle;
+        ctx.beginPath();
+        const poly = t.poly;
+        ctx.moveTo(poly[0][0], poly[0][1]);
+        for (let j = 1; j < poly.length; j++) ctx.lineTo(poly[j][0], poly[j][1]);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+    }
+    return ctx.getImageData(0, 0, CW, CH);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MAP COORD → GLOBE POSITION
+// ═══════════════════════════════════════════════════════════════════
+function _mapToGlobe(mx, my) {
+    // Map the 960x640 territory space onto a sphere
+    const lon = (mx / CW) * 360 - 180;
+    const lat = 90 - (my / CH) * 180;
+    const phi = (90 - lat) * Math.PI / 180;
+    const theta = (lon + 180) * Math.PI / 180;
+    return new Vector3(
+        GLOBE_R * Math.sin(phi) * Math.cos(theta),
+        GLOBE_R * Math.cos(phi),
+        GLOBE_R * Math.sin(phi) * Math.sin(theta)
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  TERRITORY CENTER → GLOBE POSITION
+// ═══════════════════════════════════════════════════════════════════
+function _terrCenter(tid) {
+    const t = TERRITORIES[tid];
+    return _mapToGlobe(t.cx, t.cy);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  STRUCTURE TYPES
+// ═══════════════════════════════════════════════════════════════════
+const STRUCT_TYPES = [
+    { name: 'Tower',  hBlocks: 3, baseR: 0.4, wallColor: 0x888888 },
+    { name: 'Castle', hBlocks: 5, baseR: 0.6, wallColor: 0x666666 },
+    { name: 'Fortress', hBlocks: 7, baseR: 0.8, wallColor: 0x555555 },
+];
+
+function _structType(troops) {
+    if (troops >= 100) return 2;
+    if (troops >= 50) return 1;
+    return 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  VOXEL GLOBE DATA (built once)
+// ═══════════════════════════════════════════════════════════════════
+let _voxelData = null; // { tid, pos: Vector3, normal: Vector3 }[]
+let _terrCenters = []; // Vector3 per territory
+let _terrVoxCount = []; // voxel count per territory
+let _terrInstMesh = null; // the main globe InstancedMesh
+
+function _buildVoxelData() {
+    const imgData = _buildTerritoryCanvas();
+    const data = imgData.data;
+    const voxels = [];
+    const counts = new Array(TERRITORIES.length).fill(0);
+    const cx = new Array(TERRITORIES.length).fill(0);
+    const cy = new Array(TERRITORIES.length).fill(0);
+    const cz = new Array(TERRITORIES.length).fill(0);
+
+    for (let py = 0; py < CH; py += VOX_RES) {
+        for (let px = 0; px < CW; px += VOX_RES) {
+            const ci = data[((py * CW + px) * 4)]; // R channel = tid + 1
+            if (ci === 0) continue; // ocean/black
+            const tid = ci - 1;
+            if (tid < 0 || tid >= TERRITORIES.length) continue;
+
+            const pos = _mapToGlobe(px, py);
+            const normal = pos.clone().normalize();
+            voxels.push({ tid, pos, normal });
+            counts[tid]++;
+            cx[tid] += pos.x; cy[tid] += pos.y; cz[tid] += pos.z;
+        }
+    }
+
+    _voxelData = voxels;
+    _terrVoxCount = counts;
+
+    // Compute territory centers on globe
+    _terrCenters = TERRITORIES.map((t, i) => {
+        if (counts[i] === 0) return _mapToGlobe(t.cx, t.cy);
+        return new Vector3(cx[i] / counts[i], cy[i] / counts[i], cz[i] / counts[i]);
+    });
+
+    console.log('[VoxelGlobe] Built', voxels.length, 'voxels across', TERRITORIES.length, 'territories');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  BUILD GLOBE INSTANCED MESH
+// ═══════════════════════════════════════════════════════════════════
+function _buildGlobeMesh() {
+    if (_voxelData === null) _buildVoxelData();
+    const voxels = _voxelData;
+    const geo = new BoxGeometry(VOX, VOX, VOX);
+    const mat = new MeshStandardMaterial({ roughness: 0.8, metalness: 0.1 });
+    const mesh = new InstancedMesh(geo, mat, voxels.length);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    const dm = new Object3D();
+    const col = new Color();
+
+    for (let i = 0; i < voxels.length; i++) {
+        const v = voxels[i];
+        dm.position.copy(v.pos);
+        dm.lookAt(0, 0, 0);
+        dm.updateMatrix();
+        mesh.setMatrixAt(i, dm.matrix);
+
+        // Color by territory with golden ratio spacing
+        const tRGB = T_VOX[TERRITORIES[v.tid].terrain] || T_VOX.plains;
+        col.setRGB(tRGB[0], tRGB[1], tRGB[2]);
+        mesh.setColorAt(i, col);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+
+    // Store territory ID per instance for raycasting
+    mesh.userData = { terrIds: voxels.map(v => v.tid) };
+    return mesh;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  BUILD STRUCTURE (DESTRUCTIBLE VOXEL BUILDING)
+// ═══════════════════════════════════════════════════════════════════
+function _buildStructure(tid, troops) {
+    const center = _terrCenters[tid];
+    const normal = center.clone().normalize();
+    const st = STRUCT_TYPES[_structType(troops)];
+    const rng = _prng(tid * 7919);
+
+    const group = new Group();
+    const blockGeo = new BoxGeometry(VOX * 0.9, VOX * 0.9, VOX * 0.9);
+    const baseMat = new MeshStandardMaterial({ roughness: 0.6, metalness: 0.2 });
+    const blocks = []; // track all blocks for destruction
+
+    // Build a castle/fortress shape out of voxels
+    const r = st.baseR;
+    for (let y = 0; y < st.hBlocks; y++) {
+        // Layer radius shrinks at top
+        const lr = y === st.hBlocks - 1 ? r * 0.5 : (y === 0 ? r * 1.2 : r);
+        const steps = Math.max(4, Math.floor(lr / VOX * 4));
+        for (let a = 0; a < steps; a++) {
+            const angle = (a / steps) * Math.PI * 2;
+            const bx = Math.cos(angle) * lr;
+            const bz = Math.sin(angle) * lr;
+
+            // Position relative to sphere surface
+            const tangent = new Vector3(normal.z, 0, -normal.x).normalize();
+            const bitangent = new Vector3().crossVectors(normal, tangent).normalize();
+
+            const pos = center.clone()
+                .add(tangent.multiplyScalar(bx))
+                .add(bitangent.multiplyScalar(bz))
+                .add(normal.clone().multiplyScalar(VOX * (y + 1)));
+
+            const mat = baseMat.clone();
+            mat.color.set(st.wallColor);
+            // Darken top layers
+            mat.color.multiplyScalar(0.7 + y * 0.05);
+
+            const block = new Mesh(blockGeo, mat);
+            block.position.copy(pos);
+            block.lookAt(0, 0, 0);
+            block.castShadow = true;
+            block.userData = { isBlock: true, hp: 100, tid, originalPos: pos.clone() };
+            blocks.push(block);
+            group.add(block);
+        }
+    }
+
+    // Gate entry point
+    const gatePos = center.clone().add(normal.clone().multiplyScalar(VOX * 1.5));
+    const gateMat = new MeshStandardMaterial({ color: 0x886644, emissive: 0x886644, emissiveIntensity: 0.2 });
+    const gate = new Mesh(blockGeo, gateMat);
+    gate.position.copy(gatePos);
+    gate.lookAt(0, 0, 0);
+    gate.userData = { isGate: true, tid };
+    group.add(gate);
+
+    group.userData = { tid, type: st.name, blocks, gate, hp: 100, maxHp: 100 };
+    return group;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  DEBRIS SYSTEM (for block destruction)
+// ═══════════════════════════════════════════════════════════════════
+class _DebrisSystem {
+    constructor(scene) {
+        this.scene = scene;
+        this.pieces = [];
+        this.group = new Group();
+        scene.add(this.group);
+    }
+
+    spawn(pos, color, count = 8) {
+        const geo = new BoxGeometry(VOX * 0.4, VOX * 0.4, VOX * 0.4);
+        for (let i = 0; i < count; i++) {
+            const mat = new MeshStandardMaterial({ color, roughness: 0.7 });
+            const m = new Mesh(geo, mat);
+            m.position.copy(pos);
+            m.userData = {
+                vel: new Vector3(
+                    (Math.random() - 0.5) * 0.15,
+                    Math.random() * 0.1 + 0.05,
+                    (Math.random() - 0.5) * 0.15
+                ),
+                rot: new Vector3(Math.random() * 0.2, Math.random() * 0.2, Math.random() * 0.2),
+                life: 60 + Math.random() * 40,
+                maxLife: 100
+            };
+            this.pieces.push(m);
+            this.group.add(m);
+        }
+    }
+
+    update() {
+        for (let i = this.pieces.length - 1; i >= 0; i--) {
+            const p = this.pieces[i];
+            const d = p.userData;
+            d.life--;
+            if (d.life <= 0) {
+                this.group.remove(p);
+                p.geometry.dispose();
+                p.material.dispose();
+                this.pieces.splice(i, 1);
+                continue;
+            }
+            p.position.add(d.vel);
+            d.vel.y -= 0.003; // gravity
+            p.rotation.x += d.rot.x;
+            p.rotation.z += d.rot.z;
+            // Fade out
+            p.material.opacity = Math.max(0, d.life / d.maxLife);
+            p.material.transparent = true;
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  VICTORY PARTICLES
+// ═══════════════════════════════════════════════════════════════════
+class _VictoryParticles {
+    constructor(scene) {
+        this.scene = scene;
+        this.particles = [];
+        this.group = new Group();
+        scene.add(this.group);
+        this.active = false;
+    }
+
+    burst(center, color, count = 30) {
+        this.active = true;
+        const geo = new BoxGeometry(VOX * 0.3, VOX * 0.3, VOX * 0.3);
+        for (let i = 0; i < count; i++) {
+            const mat = new MeshBasicMaterial({ color, transparent: true, opacity: 1 });
+            const m = new Mesh(geo, mat);
+            m.position.copy(center);
+            const dir = center.clone().normalize();
+            m.userData = {
+                vel: dir.multiplyScalar(0.05 + Math.random() * 0.1).add(
+                    new Vector3((Math.random() - 0.5) * 0.08, Math.random() * 0.08, (Math.random() - 0.5) * 0.08)
+                ),
+                life: 40 + Math.random() * 30,
+                maxLife: 70
+            };
+            this.particles.push(m);
+            this.group.add(m);
+        }
+    }
+
+    update() {
+        if (this.particles.length === 0) { this.active = false; return; }
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            const d = p.userData;
+            d.life--;
+            if (d.life <= 0) {
+                this.group.remove(p);
+                p.geometry.dispose();
+                p.material.dispose();
+                this.particles.splice(i, 1);
+                continue;
+            }
+            p.position.add(d.vel);
+            p.material.opacity = d.life / d.maxLife;
+            p.scale.multiplyScalar(0.98);
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MAIN RENDERER3D CLASS
+// ═══════════════════════════════════════════════════════════════════
+export class Renderer3D extends Renderer {
+    constructor(game, glCanvas) {
+        console.log('[VoxelGlobe3D] Constructor start');
+        super(game);
+        this._glCanvas = glCanvas;
+        this._3dReady = false;
+        this._camTarget = new Vector3(0, 0, 0);
+        this._cmdVision = false;
+        this._structures = []; // one per territory
+        this._debris = null;
+        this._victoryParts = null;
+        this._stars = null;
+
+        try {
+            this._initThree();
+            this._buildGlobe();
+            this._buildStructures();
+            this._buildStars();
+            this._debris = new _DebrisSystem(this._scene);
+            this._victoryParts = new _VictoryParticles(this._scene);
+            this._3dReady = true;
+            console.log('[VoxelGlobe3D] Init complete');
+        } catch (e) {
+            console.error('[VoxelGlobe3D] INIT FAILED:', e.message, e.stack);
+            const c = this.ctx;
+            c.fillStyle = '#ff0000';
+            c.font = '20px monospace';
+            c.fillText('3D INIT ERROR: ' + e.message, 50, 50);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  INIT THREE.JS
+    // ═══════════════════════════════════════════════════════════
+    _initThree() {
+        const cv = this._glCanvas;
+        const g = this.g;
+
+        this._renderer = new WebGLRenderer({
+            canvas: cv, antialias: true, alpha: false,
+            powerPreference: 'high-performance'
+        });
+        this._renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this._renderer.setSize(g.W, g.H);
+        this._renderer.toneMapping = ACESFilmicToneMapping;
+        this._renderer.toneMappingExposure = 1.2;
+        this._renderer.outputColorSpace = SRGBColorSpace;
+        this._renderer.shadowMap.enabled = true;
+        this._renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        // Scene — deep space
+        this._scene = new Scene();
+        this._scene.background = new Color(0x050510);
+        this._scene.fog = new FogExp2(0x050510, 0.008);
+
+        // Camera
+        this._camera = new PerspectiveCamera(50, g.W / g.H, 0.1, 300);
+        this._camera.position.set(0, 3, 18);
+
+        // Controls (manual orbit)
+        this._controls = this._createOrbitControls(cv);
+        this._controls.target.set(0, 0, 0);
+
+        // Lights
+        const hemi = new HemisphereLight(0x446688, 0x221122, 0.4);
+        this._scene.add(hemi);
+
+        this._sun = new DirectionalLight(0xffeedd, 1.0);
+        this._sun.position.set(8, 12, 10);
+        this._sun.castShadow = true;
+        this._sun.shadow.mapSize.set(1024, 1024);
+        this._sun.shadow.camera.near = 0.5;
+        this._sun.shadow.camera.far = 50;
+        this._sun.shadow.camera.left = -15;
+        this._sun.shadow.camera.right = 15;
+        this._sun.shadow.camera.top = 15;
+        this._sun.shadow.camera.bottom = -15;
+        this._scene.add(this._sun);
+
+        const fill = new DirectionalLight(0x6688aa, 0.3);
+        fill.position.set(-10, 5, -8);
+        this._scene.add(fill);
+
+        const ambient = new AmbientLight(0x223344, 0.3);
+        this._scene.add(ambient);
+
+        // Raycaster
+        this._raycaster = new Raycaster();
+        this._mouse = new Vector2();
+
+        // Resize
+        this._onResize = () => {
+            const w = window.innerWidth, h = window.innerHeight;
+            this._camera.aspect = w / h;
+            this._camera.updateProjectionMatrix();
+            this._renderer.setSize(w, h);
+        };
+        window.addEventListener('resize', this._onResize);
+        console.log('[VoxelGlobe3D] Scene built');
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  ORBIT CONTROLS (manual, no dependency on OrbitControls addon)
+    // ═══════════════════════════════════════════════════════════
+    _createOrbitControls(element) {
+        const self = this;
+        const ctrl = {
+            enabled: true,
+            dampingFactor: 0.08,
+            minDistance: 10,
+            maxDistance: 40,
+            minPolarAngle: 0.15,
+            maxPolarAngle: Math.PI * 0.85,
+            // Camera spherical coordinates
+            theta: 0,
+            phi: Math.PI * 0.35,
+            radius: 18,
+            // Look-at target
+            targetX: 0, targetY: 0, targetZ: 0,
+            // Interaction state
+            _isDown: false,
+            _button: 0,
+            _prevX: 0,
+            _prevY: 0
+        };
+
+        element.addEventListener('contextmenu', e => e.preventDefault());
+        element.addEventListener('wheel', e => {
+            if (!ctrl.enabled) return;
+            e.preventDefault();
+            const d = e.deltaY * 0.01;
+            ctrl.radius = Math.max(ctrl.minDistance, Math.min(ctrl.maxDistance, ctrl.radius + ctrl.radius * d));
+        }, { passive: false });
+
+        element.addEventListener('pointerdown', e => {
+            if (e.button === 2 || e.button === 1 || (e.button === 0 && e.shiftKey)) {
+                ctrl._isDown = true;
+                ctrl._button = e.button;
+                ctrl._prevX = e.clientX;
+                ctrl._prevY = e.clientY;
+            }
+        });
+        window.addEventListener('pointermove', e => {
+            if (!ctrl._isDown) return;
+            const dx = (e.clientX - ctrl._prevX) * 0.005;
+            const dy = (e.clientY - ctrl._prevY) * 0.005;
+            ctrl._prevX = e.clientX;
+            ctrl._prevY = e.clientY;
+            ctrl.theta -= dx;
+            ctrl.phi = Math.max(ctrl.minPolarAngle, Math.min(ctrl.maxPolarAngle, ctrl.phi - dy));
+        });
+        window.addEventListener('pointerup', e => {
+            if (e.button === ctrl._button) ctrl._isDown = false;
+        });
+
+        ctrl.update = () => {
+            const sinPhi = Math.sin(ctrl.phi);
+            const cosPhi = Math.cos(ctrl.phi);
+            const sinTheta = Math.sin(ctrl.theta);
+            const cosTheta = Math.cos(ctrl.theta);
+            self._camera.position.set(
+                ctrl.targetX + ctrl.radius * sinPhi * cosTheta,
+                ctrl.targetY + ctrl.radius * cosPhi,
+                ctrl.targetZ + ctrl.radius * sinPhi * sinTheta
+            );
+            self._camera.lookAt(ctrl.targetX, ctrl.targetY, ctrl.targetZ);
+        };
+
+        // Expose target as plain object for lerp
+        ctrl.target = {
+            x: 0, y: 0, z: 0,
+            lerp(target, alpha) {
+                ctrl.targetX += (target.x - ctrl.targetX) * alpha;
+                ctrl.targetY += (target.y - ctrl.targetY) * alpha;
+                ctrl.targetZ += (target.z - ctrl.targetZ) * alpha;
+            },
+            copy(v) {
+                ctrl.targetX = v.x;
+                ctrl.targetY = v.y;
+                ctrl.targetZ = v.z;
+            },
+            set(x, y, z) {
+                ctrl.targetX = x; ctrl.targetY = y; ctrl.targetZ = z;
+            }
+        };
+        // Initialize from camera position
+        const pos = self._camera.position;
+        ctrl.radius = Math.max(ctrl.minDistance, Math.min(ctrl.maxDistance, pos.length()));
+        ctrl.phi = Math.max(ctrl.minPolarAngle, Math.min(ctrl.maxPolarAngle, Math.acos(pos.y / ctrl.radius)));
+        ctrl.theta = Math.atan2(pos.z, pos.x);
+
+        return ctrl;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  BUILD VOXEL GLOBE
+    // ═══════════════════════════════════════════════════════════
+    _buildGlobe() {
+        const mesh = _buildGlobeMesh();
+        this._globeMesh = mesh;
+        this._globeGroup = new Group();
+        this._globeGroup.add(mesh);
+        this._scene.add(this._globeGroup);
+
+        // Atmosphere glow ring
+        const atmosGeo = new SphereGeometry(GLOBE_R * 1.02, 48, 24);
+        const atmosMat = new MeshBasicMaterial({
+            color: 0x4488cc, transparent: true, opacity: 0.05,
+            side: BackSide
+        });
+        const atmos = new Mesh(atmosGeo, atmosMat);
+        this._globeGroup.add(atmos);
+        this._atmosphere = atmos;
+
+        // Territory labels as sprites
+        this._terrLabels = [];
+        this._buildLabels();
+
+        // Selection ring
+        const ringGeo = new RingGeometry(GLOBE_R + 0.15, GLOBE_R + 0.3, 32);
+        const ringMat = new MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.5, side: DoubleSide });
+        this._selectRing = new Mesh(ringGeo, ringMat);
+        this._selectRing.visible = false;
+        this._scene.add(this._selectRing);
+
+        console.log('[VoxelGlobe3D] Globe mesh added');
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  BUILD LABELS
+    // ═══════════════════════════════════════════════════════════
+    _buildLabels() {
+        for (let i = 0; i < TERRITORIES.length; i++) {
+            if (_terrVoxCount[i] === 0) continue;
+            const center = _terrCenters[i];
+            const cvs = document.createElement('canvas');
+            cvs.width = 256; cvs.height = 64;
+            const tex = new CanvasTexture(cvs);
+            const mat = new SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+            const sprite = new Sprite(mat);
+            sprite.position.copy(center.clone().normalize().multiplyScalar(GLOBE_R + 0.8));
+            sprite.scale.set(8, 2, 1);
+            this._globeGroup.add(sprite);
+            this._terrLabels[i] = { sprite, canvas: cvs, tex };
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  BUILD STARS
+    // ═══════════════════════════════════════════════════════════
+    _buildStars() {
+        const geo = new BufferGeometry();
+        const positions = new Float32Array(3000 * 3);
+        for (let i = 0; i < 3000; i++) {
+            positions[i * 3] = (Math.random() - 0.5) * 200;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * 200;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 200;
+        }
+        geo.setAttribute('position', new Float32BufferAttribute(positions, 3));
+        this._stars = new Points(geo, new PointsMaterial({
+            color: 0xffffff, size: 0.15, sizeAttenuation: true
+        }));
+        this._scene.add(this._stars);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  BUILD STRUCTURES (per territory)
+    // ═══════════════════════════════════════════════════════════
+    _buildStructures() {
+        const g = this.g;
+        this._structures = [];
+        this._structGroup = new Group();
+        this._scene.add(this._structGroup);
+
+        for (let i = 0; i < TERRITORIES.length; i++) {
+            if (_terrVoxCount[i] === 0) continue;
+            // Use initial troops from game state or default
+            const ts = g.ts ? g.ts[i] : null;
+            const troops = ts ? (ts.troops || 30) : 30;
+            const struct = _buildStructure(i, troops);
+            struct.visible = false; // hidden until owned
+            this._structGroup.add(struct);
+            this._structures[i] = struct;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  COMMANDER VISION TOGGLE
+    // ═══════════════════════════════════════════════════════════
+    toggleCommanderVision() {
+        this._cmdVision = !this._cmdVision;
+        if (this._cmdVision) {
+            // Zoom in
+            this._camDist = this._controls._spherical.radius;
+            this._controls._spherical.radius = 12;
+            // Wireframe structures
+            for (const s of this._structures) {
+                if (!s) continue;
+                s.traverse(child => {
+                    if (child.isMesh && child.material) {
+                        child.userData._origMat = child.material;
+                        child.material = child.material.clone();
+                        child.material.wireframe = true;
+                        child.material.transparent = true;
+                        child.material.opacity = 0.55;
+                    }
+                });
+                s.visible = true;
+            }
+        } else {
+            // Restore zoom
+            if (this._camDist) this._controls._spherical.radius = this._camDist;
+            // Restore materials
+            for (const s of this._structures) {
+                if (!s) continue;
+                s.traverse(child => {
+                    if (child.isMesh && child.userData._origMat) {
+                        child.material.dispose();
+                        child.material = child.userData._origMat;
+                        delete child.userData._origMat;
+                    }
+                });
+                this._updateStructureVisibility();
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  DESTRUCT BLOCK (combat animation)
+    // ═══════════════════════════════════════════════════════════
+    destroyBlock(tid, blockIndex) {
+        const struct = this._structures[tid];
+        if (!struct || !struct.userData.blocks) return;
+
+        const blocks = struct.userData.blocks;
+        if (blockIndex >= blocks.length) return;
+
+        const block = blocks[blockIndex];
+        if (!block.parent) return; // already destroyed
+
+        const pos = block.position.clone();
+        const color = block.material.color.clone();
+
+        // Remove block
+        struct.remove(block);
+        block.geometry.dispose();
+        block.material.dispose();
+        blocks[blockIndex] = null;
+
+        // Spawn debris
+        this._debris.spawn(pos, color, 6);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  VICTORY BURST
+    // ═══════════════════════════════════════════════════════════
+    triggerVictory(tid, color) {
+        const center = _terrCenters[tid];
+        if (center) {
+            this._victoryParts.burst(center, color || 0xffd700, 40);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  ATTACK ANIMATION (destroy blocks sequentially)
+    // ═══════════════════════════════════════════════════════════
+    _attackQueue = [];
+
+    queueAttack(fromTid, toTid, color) {
+        const struct = this._structures[toTid];
+        if (!struct) return;
+        const blocks = struct.userData.blocks;
+        const liveBlocks = blocks.filter((b, i) => b !== null);
+        const toDestroy = Math.min(3, liveBlocks.length); // destroy 3 blocks per attack
+
+        for (let i = 0; i < toDestroy; i++) {
+            this._attackQueue.push({
+                tid: toTid,
+                delay: i * 8 + Math.random() * 4,
+                color: color || 0xff4444
+            });
+        }
+    }
+
+    _processAttackQueue() {
+        for (let i = this._attackQueue.length - 1; i >= 0; i--) {
+            const atk = this._attackQueue[i];
+            atk.delay--;
+            if (atk.delay <= 0) {
+                const struct = this._structures[atk.tid];
+                if (struct) {
+                    const blocks = struct.userData.blocks;
+                    for (let j = 0; j < blocks.length; j++) {
+                        if (blocks[j] !== null) {
+                            this.destroyBlock(atk.tid, j);
+                            break;
+                        }
+                    }
+                }
+                this._attackQueue.splice(i, 1);
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  REBUILD STRUCTURE (after owner changes or upgrade)
+    // ═══════════════════════════════════════════════════════════
+    _rebuildStructure(tid) {
+        const old = this._structures[tid];
+        if (old) {
+            this._structGroup.remove(old);
+            old.traverse(child => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+            });
+        }
+        const g = this.g;
+        const ts = g.ts ? g.ts[tid] : null;
+        const troops = ts ? (ts.troops || 30) : 30;
+        const struct = _buildStructure(tid, troops);
+
+        // Color blocks by empire
+        if (ts && ts.owner != null && EMPIRES[ts.owner]) {
+            const empColor = new Color(EMPIRES[ts.owner].color);
+            struct.traverse(child => {
+                if (child.isMesh && child.userData.isBlock) {
+                    child.material.color.copy(empColor).multiplyScalar(0.6);
+                    child.material.emissive = empColor;
+                    child.material.emissiveIntensity = 0.1;
+                }
+            });
+        }
+
+        this._structGroup.add(struct);
+        this._structures[tid] = struct;
+    }
+
+    _updateStructureVisibility() {
+        const g = this.g;
+        for (let i = 0; i < TERRITORIES.length; i++) {
+            const s = this._structures[i];
+            if (!s) continue;
+            const ts = g.ts ? g.ts[i] : null;
+            s.visible = ts && ts.owner != null;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  UPDATE OWNERSHIP COLORS ON GLOBE
+    // ═══════════════════════════════════════════════════════════
+    _updateOwnershipColors() {
+        const g = this.g;
+        if (!this._globeMesh || !_voxelData) return;
+        const colAttr = this._globeMesh.instanceColor;
+        if (!colAttr) return;
+
+        // Pre-compute empire colors
+        const empRGB = {};
+        for (const eid in EMPIRES) {
+            const c = new Color(EMPIRES[eid].color);
+            empRGB[eid] = [c.r, c.g, c.b];
+        }
+
+        const col = new Color();
+        for (let i = 0; i < _voxelData.length; i++) {
+            const v = _voxelData[i];
+            const ts = g.ts ? g.ts[v.tid] : null;
+            if (ts && ts.owner != null && empRGB[ts.owner]) {
+                const eRGB = empRGB[ts.owner];
+                const tRGB = T_VOX[TERRITORIES[v.tid].terrain] || T_VOX.plains;
+                const blend = 0.4; // stronger empire tint on globe
+                col.setRGB(
+                    tRGB[0] * (1 - blend) + eRGB[0] * blend,
+                    tRGB[1] * (1 - blend) + eRGB[1] * blend,
+                    tRGB[2] * (1 - blend) + eRGB[2] * blend
+                );
+                colAttr.setXYZ(i, col.r, col.g, col.b);
+            }
+        }
+        colAttr.needsUpdate = true;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  UPDATE LABELS
+    // ═══════════════════════════════════════════════════════════
+    _updateLabels() {
+        const g = this.g;
+        for (let i = 0; i < TERRITORIES.length; i++) {
+            const label = this._terrLabels[i];
+            if (!label) continue;
+            const ts = g.ts ? g.ts[i] : null;
+            const t = TERRITORIES[i];
+            const ctx = label.canvas.getContext('2d');
+            ctx.clearRect(0, 0, 256, 64);
+            ctx.shadowColor = 'rgba(0,0,0,0.9)';
+            ctx.shadowBlur = 4;
+            ctx.font = 'bold 22px Georgia, serif';
+            ctx.fillStyle = '#f0e0c0';
+            ctx.textAlign = 'center';
+            ctx.fillText(t.name, 128, 22);
+
+            if (ts && ts.owner != null) {
+                const emp = EMPIRES[ts.owner];
+                if (emp && emp.emperor) {
+                    ctx.font = 'italic 14px Georgia, serif';
+                    ctx.fillStyle = emp.color || '#ccc';
+                    ctx.fillText(emp.emperor, 128, 40);
+                }
+            }
+            if (ts) {
+                ctx.font = 'bold 12px Georgia, serif';
+                ctx.fillStyle = '#ffd700';
+                ctx.fillText((ts.troops || 0) + '', 128, 56);
+            }
+            ctx.shadowBlur = 0;
+            label.tex.needsUpdate = true;
+
+            const isSel = g.sel === i, isHov = g.hover === i;
+            const sc = isSel ? 1.5 : isHov ? 1.2 : 1.0;
+            label.sprite.scale.set(8 * sc, 2 * sc, 1);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  RAYCASTING (screen → territory)
+    // ═══════════════════════════════════════════════════════════
+    _raycastTerritory(screenX, screenY) {
+        if (!this._3dReady || !this._globeMesh) return -1;
+        const rect = this._glCanvas.getBoundingClientRect();
+        this._mouse.x = ((screenX - rect.left) / rect.width) * 2 - 1;
+        this._mouse.y = -((screenY - rect.top) / rect.height) * 2 + 1;
+        this._raycaster.setFromCamera(this._mouse, this._camera);
+
+        // Check structures first (higher priority)
+        const structHits = this._raycaster.intersectObjects(this._structGroup.children, true);
+        if (structHits.length > 0) {
+            let obj = structHits[0].object;
+            while (obj && obj.userData.tid === undefined) obj = obj.parent;
+            if (obj && obj.userData.tid !== undefined) return obj.userData.tid;
+        }
+
+        // Then check globe
+        const hits = this._raycaster.intersectObject(this._globeMesh, false);
+        if (hits.length > 0) {
+            const face = hits[0].face;
+            if (face) {
+                const idx = face.a;
+                const tid = this._globeMesh.userData.terrIds[idx];
+                return tid >= 0 ? tid : -1;
+            }
+        }
+        return -1;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  UPDATE SELECTION RING
+    // ═══════════════════════════════════════════════════════════
+    _updateSelectionRing() {
+        const g = this.g;
+        if (g.sel != null && _terrCenters[g.sel]) {
+            const center = _terrCenters[g.sel];
+            const normal = center.clone().normalize();
+            this._selectRing.position.copy(normal.clone().multiplyScalar(GLOBE_R + 0.05));
+            this._selectRing.lookAt(0, 0, 0);
+            this._selectRing.visible = true;
+            // Pulse opacity
+            this._selectRing.material.opacity = 0.3 + Math.sin(this.time * 0.1) * 0.2;
+        } else {
+            this._selectRing.visible = false;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  PER-FRAME 3D UPDATE
+    // ═══════════════════════════════════════════════════════════
+    _update3D() {
+        if (!this._3dReady) return;
+        const g = this.g;
+        const t = this.time * 0.016;
+
+        // Slow globe rotation (very subtle)
+        if (this._globeGroup) {
+            this._globeGroup.rotation.y += 0.0003;
+        }
+
+        // Update systems
+        if (this._debris) this._debris.update();
+        if (this._victoryParts) this._victoryParts.update();
+        this._processAttackQueue();
+
+        // Update ownership colors (throttled)
+        if (this.time % 30 === 0) {
+            this._updateOwnershipColors();
+            this._updateStructureVisibility();
+        }
+
+        // Update labels (throttled)
+        if (this.time % 60 === 0) {
+            this._updateLabels();
+        }
+
+        // Update selection ring
+        this._updateSelectionRing();
+
+        // Camera follow for territory view
+        if (g._terrView != null && g.state === 'territory') {
+            const tc = _terrCenters[g._terrView.tid];
+            if (tc) {
+                this._camTarget = tc.clone().normalize().multiplyScalar(GLOBE_R + 5);
+                this._controls.target.lerp(this._camTarget, 0.05);
+            }
+        }
+
+        // Commander Vision scanline
+        this._cmdVisionScan = (this._cmdVisionScan || 0) + 1;
+
+        // Update orbit controls
+        this._controls.update();
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  OVERRIDE: toScr (3D projection)
+    // ═══════════════════════════════════════════════════════════
+    toScr(x, y) {
+        const vec = _terrCenter(x || 0).clone().add(new Vector3(0, 1, 0));
+        vec.project(this._camera);
+        return {
+            x: (vec.x * 0.5 + 0.5) * this.g.W,
+            y: (-vec.y * 0.5 + 0.5) * this.g.H
+        };
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  OVERRIDE: terrAt (uses 3D raycast)
+    // ═══════════════════════════════════════════════════════════
+    terrAt(sx, sy) {
+        if (this._3dReady && (this.g.state === 'playing' || this.g.state === 'territory')) {
+            return this._raycastTerritory(sx, sy);
+        }
+        return super.terrAt(sx, sy);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  OVERRIDE: MAIN RENDER LOOP
+    // ═══════════════════════════════════════════════════════════
+    render() {
+        try {
+        const g = this.g;
+        const c = this.ctx;
+        this.time++;
+        this._layout();
+
+        const show3D = g.state === 'playing' || g.state === 'moveDialog' ||
+                       g.state === 'attack' || g.state === 'battle' ||
+                       g.state === 'shop' || g.state === 'territory' ||
+                       g.state === 'combat';
+
+        if (show3D && this._3dReady) {
+            c.clearRect(0, 0, g.W, g.H);
+            this._update3D();
+            this._renderer.render(this._scene, this._camera);
+
+            // 2D UI overlay (all from base Renderer)
+            if (g.state === 'playing') this._worldMiniHUD();
+            else if (g.state === 'moveDialog') this._moveDialog();
+            else if (g.state === 'attack') this._attackPanel();
+            else if (g.state === 'combat') this._drawCombatAnim();
+            else if (g.state === 'battle') this._battleOverlay();
+            else if (g.state === 'shop') this._shopPanel();
+            else if (g.state === 'territory') this._drawTerritoryView();
+
+            // Commander Vision overlay effects
+            if (this._cmdVision && show3D) this._drawCmdVisionOverlay();
+        } else {
+            this._bg();
+            if (g.state === 'menu') this._menu();
+            else if (g.state === 'help') this._helpScreen();
+            else if (g.state === 'difficulty') this._difficultyScreen();
+            else if (g.state === 'onlineLobby') this._onlineLobbyScreen();
+            else if (g.state === 'empireSelect') this._empSel();
+            else if (g.state === 'gameover') this._defeat();
+            else if (g.state === 'victory') this._victory();
+        }
+
+        // Universal overlays
+        this._drawTransition();
+        this._drawNotifications();
+        this._drawFloats();
+
+        if (this.flash.alpha > 0) {
+            c.fillStyle = this.flash.color.replace(')', `,${this.flash.alpha})`).replace('rgb', 'rgba');
+            c.fillRect(0, 0, g.W, g.H);
+            this.flash.alpha -= 0.03;
+        }
+
+        if (g.state === 'playing' && !g._isAI() && g._autoEndTurnDelay > 0) {
+            this._drawAITurnIndicator();
+        }
+
+        if (g.state !== 'menu' && g.state !== 'combat') {
+            this._drawBackButton();
+        }
+
+        // FPS
+        c.save();
+        c.globalAlpha = 0.4;
+        c.fillStyle = '#0f0';
+        c.font = '10px monospace';
+        c.textAlign = 'right';
+        c.fillText(this._fps + ' FPS (Voxel 3D)', g.W - 8, g.H - 8);
+        c.restore();
+
+        } catch (e) { console.error('RENDER3D ERROR:', e.message, e.stack); }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  COMMANDER VISION OVERLAY (2D effects)
+    // ═══════════════════════════════════════════════════════════
+    _drawCmdVisionOverlay() {
+        const c = this.ctx;
+        const g = this.g;
+
+        // Scanline
+        const scanY = ((this._cmdVisionScan * 2) % g.H);
+        const grad = c.createLinearGradient(0, scanY - 30, 0, scanY + 30);
+        grad.addColorStop(0, 'rgba(128,0,255,0)');
+        grad.addColorStop(0.5, 'rgba(128,0,255,0.15)');
+        grad.addColorStop(1, 'rgba(128,0,255,0)');
+        c.fillStyle = grad;
+        c.fillRect(0, scanY - 30, g.W, 60);
+
+        // Border glow
+        c.strokeStyle = 'rgba(128,0,255,0.4)';
+        c.lineWidth = 3;
+        c.strokeRect(5, 5, g.W - 10, g.H - 10);
+
+        // Label
+        c.fillStyle = 'rgba(128,0,255,0.8)';
+        c.font = 'bold 14px monospace';
+        c.textAlign = 'left';
+        c.fillText('👁 COMMANDER VISION', 15, 25);
+
+        // Territory info in CV mode
+        if (g.sel != null) {
+            const t = TERRITORIES[g.sel];
+            const ts = g.ts[g.sel];
+            c.fillStyle = 'rgba(0,255,128,0.7)';
+            c.font = 'bold 12px monospace';
+            c.fillText(`${t.name} | ${t.terrain.toUpperCase()} | DEF:${t.def}`, 15, 45);
+            if (ts) {
+                c.fillText(`Troops: ${ts.troops} | Owner: ${ts.owner != null ? EMPIRES[ts.owner]?.name || '?' : 'Neutral'}`, 15, 62);
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  OVERRIDE: _bg
+    // ═══════════════════════════════════════════════════════════
+    _bg() {
+        const show3D = this.g.state === 'playing' || this.g.state === 'moveDialog' ||
+                       this.g.state === 'attack' || this.g.state === 'battle' ||
+                       this.g.state === 'shop' || this.g.state === 'territory';
+        if (show3D) {
+            this.ctx.clearRect(0, 0, this.g.W, this.g.H);
+        } else {
+            super._bg();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  CAMERA FOCUS
+    // ═══════════════════════════════════════════════════════════
+    focusTerritory(tid) {
+        const tc = _terrCenters[tid];
+        if (!tc) return;
+        this._camTarget = tc.clone().normalize().multiplyScalar(GLOBE_R + 5);
+        this._controls.target.copy(this._camTarget);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  OVERRIDE: addCaptureAnim (rebuild structure with new color)
+    // ═══════════════════════════════════════════════════════════
+    addCaptureAnim(tid, newColor, oldColor) {
+        this._rebuildStructure(tid);
+        // Victory burst
+        if (newColor) {
+            const c = new Color(newColor);
+            this._victoryParts.burst(_terrCenters[tid], c, 35);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  OVERRIDE: startCombatAnim (block destruction)
+    // ═══════════════════════════════════════════════════════════
+    startCombatAnim(fromTid, toTid, atkEmpire, defEmpire, conquered) {
+        const color = atkEmpire != null && EMPIRES[atkEmpire] ? new Color(EMPIRES[atkEmpire].color).getHex() : 0xff4444;
+        this.queueAttack(fromTid, toTid, color);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  PUBLIC: expose Commander Vision for UI binding
+    // ═══════════════════════════════════════════════════════════
+    get cmdVision() { return this._cmdVision; }
+}

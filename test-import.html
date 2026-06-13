@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>* { margin:0; padding:0; } body { background: #333; }</style>
+</head><body>
+<canvas id="gl" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:0"></canvas>
+<canvas id="ui" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:1"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script type="module">
+try {
+    const { Renderer3D } = await import('./src/renderer3d.js');
+    document.title = 'Renderer3D loaded OK';
+} catch(e) {
+    document.title = 'LOAD ERROR: ' + e.message;
+    console.error('IMPORT ERROR:', e);
+}
+</script>
+</body></html>

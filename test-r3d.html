@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html><head>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+</head><body>
+<div id="out" style="white-space:pre-wrap;color:white;background:#333;padding:10px;font:12px monospace"></div>
+<script type="module">
+const out = document.getElementById('out');
+out.textContent += '1. Starting imports...\n';
+
+try {
+    out.textContent += '2. Importing renderer3d...\n';
+    const { Renderer3D } = await import('./src/renderer3d.js');
+    out.textContent += '3. Renderer3D imported OK\n';
+} catch(e) {
+    out.textContent += '3. IMPORT ERROR: ' + e.message + '\n';
+    out.textContent += '   ' + (e.stack || '').split('\n').slice(0, 5).join('\n') + '\n';
+}
+</script>
+</body></html>

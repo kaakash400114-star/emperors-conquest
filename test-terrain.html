@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>* { margin:0; padding:0; } body { background: #333; }</style>
+</head><body>
+<canvas id="gl"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script type="module">
+import { TERRITORIES, MAP_W, MAP_H } from './src/map.js';
+
+const WS = 0.1;
+const worldW = MAP_W * WS, worldH = MAP_H * WS;
+
+// Simple terrain - just use first 3 territories to test
+const geo = new THREE.PlaneGeometry(worldW, worldH, 120, 80);
+geo.rotateX(-Math.PI / 2);
+
+const colors = new Float32Array(geo.attributes.position.count * 3);
+const pos = geo.attributes.position;
+
+for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getZ(i);
+    const mx = (x + worldW/2) / WS, my = (z + worldH/2) / WS;
+    const h = Math.sin(x * 0.3) * Math.cos(z * 0.3) * 2;
+    pos.setY(i, h > 0 ? h : -0.1);
+    if (h > 0) { colors[i*3] = 0.3; colors[i*3+1] = 0.7; colors[i*3+2] = 0.3; }
+    else { colors[i*3] = 0.1; colors[i*3+1] = 0.2; colors[i*3+2] = 0.5; }
+}
+
+geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+geo.computeVertexNormals();
+
+const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+const mesh = new THREE.Mesh(geo, mat);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#87CEEB');
+scene.add(mesh);
+
+const cam = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.5, 500);
+cam.position.set(10, 50, 75);
+cam.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gl'), antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.render(scene, cam);
+
+// If this works, we should see a colored terrain
+document.title = 'Test rendered: ' + pos.count + ' vertices';
+</script>
+</body></html>

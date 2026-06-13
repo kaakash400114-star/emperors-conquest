@@ -30,11 +30,12 @@ export class AI {
         // ── Threat assessment: is any empire getting too strong? ──
         const playerTids = this.g.empires[this.g.player]?.tids?.length || 0;
         const ourTids = my.length;
-        const totalTids = TERRITORIES.length;
+        const totalTids = (this.g._activeTerritories || TERRITORIES).length;
         const playerDominant = playerTids > totalTids * 0.4; // Player has >40% of map
         const playerNearWin = playerTids > totalTids * 0.6;  // Player has >60% — emergency!
 
-        const borders = my.filter(id => T(id).adj.some(a => this.g.ts[a]?.owner !== this.eid));
+        const tLookup = (id) => (this.g._activeTerritories?.[id] || T(id));
+        const borders = my.filter(id => tLookup(id).adj.some(a => this.g.ts[a]?.owner !== this.eid));
         const interior = my.filter(id => !borders.includes(id));
 
         // ── 1. Buy spy network if affordable and useful ──
@@ -65,7 +66,7 @@ export class AI {
         const borderThreat = new Map();
         for (const t of borders) {
             let threat = 0;
-            for (const a of T(t).adj) {
+            for (const a of (this.g._activeTerritories?.[t] || T(t)).adj) {
                 const es = this.g.ts[a];
                 if (es && es.owner !== this.eid) {
                     // Prioritize threats from dominant player
@@ -157,7 +158,7 @@ export class AI {
         if (emp.coins >= 15) {
             // Prioritize fortifying chokepoints (territories with many enemy adjacencies)
             const fortPriority = borders.map(t => {
-                const enemyAdj = T(t).adj.filter(a => this.g.ts[a]?.owner !== this.eid).length;
+                const enemyAdj = (this.g._activeTerritories?.[t] || T(t)).adj.filter(a => this.g.ts[a]?.owner !== this.eid).length;
                 return { t, priority: enemyAdj, fort: this.g.ts[t].fort };
             }).sort((a, b) => b.priority - a.priority);
 
@@ -177,7 +178,7 @@ export class AI {
             const tr = this.g.ts[t].troops;
             if (tr <= 2) continue;
 
-            for (const a of T(t).adj) {
+            for (const a of (this.g._activeTerritories?.[t] || T(t)).adj) {
                 const es = this.g.ts[a];
                 if (!es || es.owner === this.eid) continue;
 
@@ -203,7 +204,7 @@ export class AI {
 
         // Execute attacks (up to 4 per turn, more when player is dominant)
         const playerTids2 = this.g.empires[this.g.player]?.tids?.length || 0;
-        const playerDominant2 = playerTids2 > TERRITORIES.length * 0.4;
+        const playerDominant2 = playerTids2 > (this.g._activeTerritories || TERRITORIES).length * 0.4;
         let attacksExecuted = 0;
         const maxAttacks = playerDominant2 ? 6 : 4;
         for (const target of attackTargets) {
@@ -214,11 +215,12 @@ export class AI {
             // Re-check viability (troops may have changed from previous attacks)
             if (src.troops <= 2) continue;
 
+            const eLookup = (id) => (this.g.empires[id] || E(id));
             const res = resolveCombat(
                 src.troops, dst.troops,
-                E(this.eid),
-                dst.owner ? E(dst.owner) : null,
-                T(to), strategy,
+                eLookup(this.eid),
+                dst.owner ? eLookup(dst.owner) : null,
+                tLookup(to), strategy,
                 src.weapon, dst.weapon, dst.fort
             );
 
@@ -228,7 +230,7 @@ export class AI {
             emp.coins += res.coins;
 
             if (res.conquered) {
-                const defEmpColor = dst.owner ? E(dst.owner).color : '#444';
+                const defEmpColor = dst.owner ? eLookup(dst.owner).color : '#444';
                 if (dst.owner && this.g.empires[dst.owner]) {
                     this.g.empires[dst.owner].tids = this.g.empires[dst.owner].tids.filter(t => t !== to);
                     if (this.g.empires[dst.owner].tids.length === 0) {
@@ -241,7 +243,7 @@ export class AI {
                 dst.troops = res.atkLeft;
                 src.troops = 1;
                 emp.tids.push(to);
-                this.g.renderer.addCaptureAnim(to, E(this.eid).color, defEmpColor);
+                this.g.renderer.addCaptureAnim(to, (this.g.empires?.[this.eid] || E(this.eid))?.color || '#fff', defEmpColor);
             } else {
                 dst.troops = res.defLeft;
             }
@@ -263,7 +265,7 @@ export class AI {
 
         // Threat-based threshold adjustment
         const playerTids = this.g.empires[this.g.player]?.tids?.length || 0;
-        const totalTids = TERRITORIES.length;
+        const totalTids = (this.g._activeTerritories || TERRITORIES).length;
         const playerDominant = playerTids > totalTids * 0.4;
         const attackingPlayer = dst.owner === this.g.player;
 
@@ -292,7 +294,7 @@ export class AI {
         }
 
         // ── Consider terrain and fort ──
-        const terrainDef = T(to).def;
+        const terrainDef = (this.g._activeTerritories?.[to] || T(to)).def || 0;
         const totalDef = terrainDef + dst.fort;
 
         if (totalDef >= 4) {
@@ -304,18 +306,18 @@ export class AI {
         }
 
         // ── Consider empire bonuses ──
-        const myEmp = E(this.eid);
-        const theirEmp = dst.owner ? E(dst.owner) : null;
+        const myEmp = this.g.empires[this.eid] || E(this.eid);
+        const theirEmp = dst.owner ? (this.g.empires[dst.owner] || E(dst.owner)) : null;
 
         // We get attack bonus
         if (myEmp.bonusType === 'attack') score += 3;
-        if (myEmp.bonusType === 'plains' && T(to).terrain === 'plains') score += 5;
+        if (myEmp.bonusType === 'plains' && (this.g._activeTerritories?.[to] || T(to)).terrain === 'plains') score += 5;
 
         // They get defense bonus
         if (theirEmp) {
             if (theirEmp.bonusType === 'defense') score -= 3;
-            if (theirEmp.bonusType === 'fortress' && T(to).terrain === 'mountains') score -= 3;
-            if (theirEmp.bonusType === 'island' && T(to).terrain === 'island') score -= 4;
+            if (theirEmp.bonusType === 'fortress' && (this.g._activeTerritories?.[to] || T(to)).terrain === 'mountains') score -= 3;
+            if (theirEmp.bonusType === 'island' && (this.g._activeTerritories?.[to] || T(to)).terrain === 'island') score -= 4;
         }
 
         // ── Value of target ──
@@ -330,7 +332,7 @@ export class AI {
         }
 
         // Prefer territories with higher strategic value (more connections)
-        const connections = T(to).adj.length;
+        const connections = (this.g._activeTerritories?.[to] || T(to)).adj?.length || 0;
         score += connections * 0.5;
 
         // ── Don't attack if we'd leave our border too thin ──
@@ -357,8 +359,8 @@ export class AI {
      */
     _pickStrategy(from, to, troopRatio) {
         const dst = this.g.ts[to];
-        const srcTerrain = T(from).terrain;
-        const dstTerrain = T(to).terrain;
+        const srcTerrain = (this.g._activeTerritories?.[from] || T(from)).terrain || 'plains';
+        const dstTerrain = (this.g._activeTerritories?.[to] || T(to)).terrain || 'plains';
 
         // Target has significant fortification — use Siege
         if (dst.fort >= 2) {
@@ -366,7 +368,7 @@ export class AI {
         }
 
         // Target has terrain defense — consider siege
-        if (T(to).def >= 2 && troopRatio < 2) {
+        if ((this.g._activeTerritories?.[to] || T(to)).def >= 2 && troopRatio < 2) {
             return STRATEGIES[1]; // siege
         }
 
@@ -394,7 +396,7 @@ export class AI {
         const queue = [from];
         while (queue.length > 0) {
             const cur = queue.shift();
-            for (const a of T(cur).adj) {
+            for (const a of (this.g._activeTerritories?.[cur] || T(cur)).adj) {
                 if (visited.has(a)) continue;
                 if (a === to) return true;
                 if (this.g.ts[a]?.owner === this.eid) {
@@ -431,7 +433,7 @@ export class AI {
         }
 
         for (const t of borders) {
-            const facingEnemy = T(t).adj.filter(a => {
+            const facingEnemy = (this.g._activeTerritories?.[t] || T(t)).adj.filter(a => {
                 const es = this.g.ts[a];
                 return es && es.owner !== this.eid;
             });

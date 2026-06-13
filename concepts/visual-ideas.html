@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Emperor's Conquest - Visual Concepts</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0a0a0f; color:#e8dcc8; font-family:'Crimson Text',serif; overflow-x:hidden; }
+  h1,h2,h3,h4 { font-family:'Cinzel',serif; color:#d4a948; }
+
+  .hero { text-align:center; padding:60px 20px 40px; background:linear-gradient(180deg,#1a1510 0%,#0a0a0f 100%); position:relative; overflow:hidden; }
+  .hero::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse at 50% 120%, #3a2a1044 0%, transparent 70%); }
+  .hero h1 { font-size:3em; text-shadow:0 0 40px #d4a94855; position:relative; }
+  .hero p { font-size:1.2em; color:#9a8a6a; margin-top:10px; position:relative; }
+
+  .section { max-width:1200px; margin:0 auto; padding:40px 20px; }
+  .section-title { font-size:2em; border-bottom:2px solid #d4a94844; padding-bottom:10px; margin-bottom:30px; display:flex; align-items:center; gap:15px; }
+  .section-title .icon { font-size:1.4em; }
+
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:24px; }
+
+  .card { background:linear-gradient(135deg,#1a1510,#12100c); border:1px solid #d4a94822; border-radius:12px; overflow:hidden; transition:transform .3s, border-color .3s; cursor:default; }
+  .card:hover { transform:translateY(-4px); border-color:#d4a94866; }
+  .card-header { padding:20px 24px 12px; }
+  .card-header h3 { font-size:1.2em; margin-bottom:4px; }
+  .card-header .tag { font-size:.75em; color:#8a7a5a; text-transform:uppercase; letter-spacing:2px; font-family:'Cinzel',serif; }
+  .card-body { padding:0 24px 20px; line-height:1.7; font-size:1.05em; }
+  .card-body .prompt { background:#0d0b08; border-left:3px solid #d4a948; padding:12px 16px; margin-top:12px; font-family:monospace; font-size:.82em; color:#b8a878; white-space:pre-wrap; word-break:break-word; }
+  .card-body .palette { display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; }
+  .card-body .palette span { width:28px; height:28px; border-radius:6px; border:2px solid #ffffff22; display:inline-block; }
+  .card-body .palette .label { font-size:.75em; color:#8a7a5a; margin-left:4px; }
+
+  .divider { height:2px; background:linear-gradient(90deg, transparent, #d4a94833, transparent); margin:20px 0; }
+
+  .note { background:#1a151088; border:1px solid #d4a94822; border-radius:8px; padding:20px; margin-top:30px; font-size:1.05em; line-height:1.8; }
+  .note strong { color:#d4a948; }
+
+  nav { position:fixed; left:0; top:50%; transform:translateY(-50%); background:#0d0b08ee; border:1px solid #d4a94822; border-left:none; border-radius:0 12px 12px 0; padding:12px 10px; z-index:100; display:flex; flex-direction:column; gap:8px; }
+  nav a { color:#8a7a5a; text-decoration:none; font-size:.7em; font-family:'Cinzel',serif; padding:6px 10px; border-radius:6px; transition:all .2s; white-space:nowrap; }
+  nav a:hover, nav a.active { background:#d4a94822; color:#d4a948; }
+
+  @media(max-width:768px) {
+    .hero h1 { font-size:2em; }
+    .grid { grid-template-columns:1fr; }
+    nav { display:none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="#soldiers">Soldiers</a>
+  <a href="#terrain">Terrain</a>
+  <a href="#structures">Structures</a>
+  <a href="#ui">UI & Effects</a>
+</nav>
+
+<div class="hero">
+  <h1>EMPEROR'S CONQUEST</h1>
+  <p>Visual Concept Board - Soldiers, Terrain & Ancient Structures</p>
+</div>
+
+<!-- ════════════════════ SOLDIERS ════════════════════ -->
+<div class="section" id="soldiers">
+  <h2 class="section-title"><span class="icon">&#9876;</span> Soldiers & Units</h2>
+  <div class="grid">
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Roman Legionary</h3>
+        <span class="tag">Heavy Infantry - Tier 3</span>
+      </div>
+      <div class="card-body">
+        Classic imperial Roman legionary with lorica segmentata armor, galea helmet with transverse crest (red plume). Tall rectangular scutum shield with SPQR eagle motif. Gladius short sword as primary, pilum javelin on back. Cape flowing in crimson. <strong>Role:</strong> Anvil unit — holds lines, slow but devastating in formation.
+        <div class="palette">
+          <span style="background:#8b0000"></span>
+          <span style="background:#c0a060"></span>
+          <span style="background:#4a4a4a"></span>
+          <span style="background:#2a2a2a"></span>
+          <span style="background:#d4a948"></span>
+          <span class="label">Crimson / Bronze / Steel / Dark / Gold</span>
+        </div>
+        <div class="prompt">Generate: Ancient Roman legionary soldier, full body, front view, lorica segmentata armor, red cape, bronze helmet with red plume, large rectangular shield, gladius sword, realistic digital painting, dark background, cinematic lighting</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Persian Immortal</h3>
+        <span class="tag">Elite Infantry - Tier 4</span>
+      </div>
+      <div class="card-body">
+        Persian Immortal wearing ornate scale armor (lamellar) with gold accents. Wrym-embossed tiara headpiece with purple cloth veil. Carries a Persian recurve bow and spear with silvered tip. Flowing robes underneath armor in deep purple and gold. <strong>Role:</strong> Versatile elite — ranged/melee hybrid, morale-boosting presence.
+        <div class="palette">
+          <span style="background:#4b0082"></span>
+          <span style="background:#d4a948"></span>
+          <span style="background:#c0c0c0"></span>
+          <span style="background:#1a0a2e"></span>
+          <span class="label">Royal Purple / Gold / Silver / Deep Indigo</span>
+        </div>
+        <div class="prompt">Generate: Ancient Persian Immortal warrior, full body, gold scale armor, purple robes, tall tiara with veil, wielding recurve bow and spear, ornate jewelry, realistic digital painting, dark background</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Mongol Horse Archer</h3>
+        <span class="tag">Light Cavalry - Tier 2</span>
+      </div>
+      <div class="card-body">
+        Mounted Mongol warrior on a stocky steppe horse. Wearing layered lamellar armor (leather + iron plates), fur-trimmed Mongolian helmet. Composite bow with bone-reinforced limbs, quiver of arrows on hip. Flowing deel coat in earth tones. Horse armor with chamfrons. <strong>Role:</strong> Mobile striker — hit-and-run, flanking, kite enemies.
+        <div class="palette">
+          <span style="background:#5a4a3a"></span>
+          <span style="background:#3a2a1a"></span>
+          <span style="background:#8a7a5a"></span>
+          <span style="background:#c0a060"></span>
+          <span class="label">Earth Brown / Dark Leather / Tan / Bronze</span>
+        </div>
+        <div class="prompt">Generate: Mongol horse archer on steppe horse, full body, leather lamellar armor, fur trimmed helmet, composite bow, flowing deel coat, mounted action pose, realistic digital painting, grassland background</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Egyptian War Chariot</h3>
+        <span class="tag">Heavy Cavalry - Tier 3</span>
+      </div>
+      <div class="card-body">
+        Egyptian pharaoh's chariot with two rearing horses. Blue and gold war chariot with solar disk emblem. Charioteer in nemes headdress, bronze scale corselet. Driver holding reins while archer stands ready with Egyptian composite bow. Six-spoked wooden wheels with bronze rims. <strong>Role:</strong> Shock cavalry — breaks formations, high damage, vulnerable to spears.
+        <div class="palette">
+          <span style="background:#1a3a6a"></span>
+          <span style="background:#d4a948"></span>
+          <span style="background:#f5f0e0"></span>
+          <span style="background:#c0a060"></span>
+          <span class="label">Royal Blue / Gold / Linen White / Bronze</span>
+        </div>
+        <div class="prompt">Generate: Ancient Egyptian war chariot with two horses, blue and gold chariot with sun disk emblem, archer and driver, nemes headdress, bronze armor, six-spoked wheels, desert background, realistic digital painting</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Greek Hoplite Phalanx</h3>
+        <span class="tag">Heavy Infantry - Tier 2</span>
+      </div>
+      <div class="card-body">
+        Greek hoplite in bronze muscle cuirass (heroic nudity style), Corinthian helmet with horsehair crest (teal/blue). Round aspis shield with lambda (Lacedaemon) or owl (Athens) emblem. 2.5m dory spear, xiphos short sword at hip. Bronze greaves on shins. <strong>Role:</strong> Defensive wall — formation bonus, spears create kill zone.
+        <div class="palette">
+          <span style="background:#b87333"></span>
+          <span style="background:#4a6a7a"></span>
+          <span style="background:#f5f0e0"></span>
+          <span style="background:#2a2a2a"></span>
+          <span class="label">Bronze / Teal / Linen / Dark Iron</span>
+        </div>
+        <div class="prompt">Generate: Ancient Greek hoplite warrior, full body, bronze muscle cuirass, Corinthian helmet with teal horsehair crest, large round shield with lambda symbol, long dory spear, bronze greaves, realistic digital painting, dark background</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Celtic Berserker</h3>
+        <span class="tag">Light Infantry - Tier 1</span>
+      </div>
+      <div class="card-body">
+        Fierce Celtic warrior with woad blue body paint spiraling across skin. Wild hair spiked with lime (bleached white). Torc neck ring in twisted gold. Wielding a long iron slashing sword (spatha) and small round caetra shield. Naked from waist up, checked trousers. Screaming war face, tattooed. <strong>Role:</strong> Glass cannon — insane damage, no armor, morale terror.
+        <div class="palette">
+          <span style="background:#1a4a8a"></span>
+          <span style="background:#5a8a3a"></span>
+          <span style="background:#d4a948"></span>
+          <span style="background:#8b4513"></span>
+          <span class="label">Woad Blue / Forest Green / Gold / Leather Brown</span>
+        </div>
+        <div class="prompt">Generate: Celtic berserker warrior, blue woad body paint, spiked white hair, gold torc necklace, wielding long iron sword, wild screaming expression, tartan trousers, oak forest background, realistic digital painting</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>War Elephant (Carthaginian)</h3>
+        <span class="tag">Siege Unit - Tier 4</span>
+      </div>
+      <div class="card-body">
+        Massive African war elephant armored with leather and bronze plates on forehead and sides. Howdah (tower) on back with 2-3 archers. Mahout (driver) in Carthaginian armor with goad stick. Elephant with ornate chainmail and war paints (red stripes). Tusks tipped with iron points. <strong>Role:</strong> Mobile siege — tramples infantry, crushes gates,恐慌-causing.
+        <div class="palette">
+          <span style="background:#6a6a6a"></span>
+          <span style="background:#8b0000"></span>
+          <span style="background:#b87333"></span>
+          <span style="background:#3a2a1a"></span>
+          <span class="label">Elephant Gray / War Red / Bronze / Leather</span>
+        </div>
+        <div class="prompt">Generate: Ancient Carthaginian war elephant, armored with bronze plates, howdah tower on back with archers, iron-tipped tusks, red war paint, battle scene, realistic digital painting, dust and chaos</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Samurai Ashigaru (Eastern)</h3>
+        <span class="tag">Medium Infantry - Tier 2</span>
+      </div>
+      <div class="card-body">
+        Japanese ashigaru foot soldier in o-yoroi armor lacquered in black and red. Kabuto helmet with fierce menpo (face mask). Wielding a yari (spear) and wearing a katana. Jingasa (conical hat) variant for lower rank. Sashimono banner on back showing clan mon (crest). <strong>Role:</strong> Disciplined mid-tier — solid stats, formation bonus, cheap to field.
+        <div class="palette">
+          <span style="background:#1a1a1a"></span>
+          <span style="background:#8b0000"></span>
+          <span style="background:#d4a948"></span>
+          <span style="background:#4a2a1a"></span>
+          <span class="label">Lacquer Black / Blood Red / Gold / Dark Wood</span>
+        </div>
+        <div class="prompt">Generate: Japanese samurai ashigaru warrior, black and red lacquered o-yoroi armor, kabuto helmet with menpo face mask, yari spear, sashimono banner, realistic digital painting, dark background</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════════════════════ TERRAIN ════════════════════ -->
+<div class="section" id="terrain">
+  <h2 class="section-title"><span class="icon">&#127956;</span> Terrain & Landscapes</h2>
+  <div class="grid">
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Fertile River Valley</h3>
+        <span class="tag">Settlement Zone - Food++</span>
+      </div>
+      <div class="card-body">
+        Lush green flood plain between two mountain ridges. Winding river with silver reflections cutting through golden wheat fields. Small mud-brick farming villages dotting the banks. Palm trees and papyrus reeds along water's edge. Sunrise light casting long shadows. <strong>Terrain bonus:</strong> +30% food production, -10% movement speed (river crossing penalty).
+        <div class="palette">
+          <span style="background:#6a8a3a"></span>
+          <span style="background:#d4b040"></span>
+          <span style="background:#4a7aaa"></span>
+          <span style="background:#5a8a5a"></span>
+          <span class="label">Green Fields / Golden Wheat / River Blue / Foliage</span>
+        </div>
+        <div class="prompt">Generate: Ancient fertile river valley, lush green fields, golden wheat, winding river between mountains, mud-brick villages, palm trees, sunrise, birds eye view map style, realistic digital painting</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Arid Desert Wasteland</h3>
+        <span class="tag">Harsh Zone - Movement--</span>
+      </div>
+      <div class="card-body">
+        Vast Saharan-style desert with towering golden dunes stretching to horizon. Scattered oasis with date palms creating emerald islands in the sand. Caravan routes marked by scattered bones and weathered stone cairns. Heat haze shimmer effect. Dried riverbed (wadi) with cracked earth. <strong>Terrain bonus:</strong> +20% defense (hard to approach), -30% food, units take attrition damage.
+        <div class="palette">
+          <span style="background:#d4a948"></span>
+          <span style="background:#c0903a"></span>
+          <span style="background:#f5e8c8"></span>
+          <span style="background:#3a5a3a"></span>
+          <span class="label">Golden Sand / Burnt Sienna / Heat White / Oasis Green</span>
+        </div>
+        <div class="prompt">Generate: Vast ancient desert landscape, golden sand dunes, scattered oasis with palm trees, caravan route markers, heat haze, cracked wadi riverbed, top-down map view, realistic digital painting</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Dense Forest (Germania)</h3>
+        <span class="tag">Ambush Zone - Stealth++</span>
+      </div>
+      <div class="card-body">
+        Ancient European forest of towering oak and beech trees, canopy so thick it creates twilight below. Sunbeams piercing through gaps creating god-ray effects. Thick undergrowth of ferns and brambles. Hidden paths and deer trails. Moss-covered fallen logs. Fog rolling between trunks. <strong>Terrain bonus:</strong> +40% ambush chance, -20% movement, +15% defense for light infantry.
+        <div class="palette">
+          <span style="background:#2a4a1a"></span>
+          <span style="background:#1a3a0a"></span>
+          <span style="background:#5a7a3a"></span>
+          <span style="background:#8a9a6a"></span>
+          <span class="label">Deep Forest / Canopy Dark / Fern Green / Moss</span>
+        </div>
+        <div class="prompt">Generate: Ancient dense European forest, towering oak trees, thick canopy with sunbeams piercing through, ferns and moss, fog between trunks, dark mysterious atmosphere, top-down map view, realistic digital painting</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Snowy Mountain Pass</h3>
+        <span class="tag">Bottleneck Zone - Defense+++</span>
+      </div>
+      <div class="card-body">
+        Narrow alpine pass between snow-capped peaks. Rocky terrain with frozen streams and icicle formations. Pine trees bent under snow weight. Stone watchtower ruins at the highest point. Howling wind effect with blowing snow particles. Narrow path forces armies into single file. <strong>Terrain bonus:</strong> +50% defense, -40% movement, units take cold attrition, cavalry disabled.
+        <div class="palette">
+          <span style="background:#e8e8f0"></span>
+          <span style="background:#4a5a6a"></span>
+          <span style="background:#2a3a4a"></span>
+          <span style="background:#3a5a3a"></span>
+          <span class="label">Snow White / Mountain Gray / Ice Blue / Pine Green</span>
+        </div>
+        <div class="prompt">Generate: Narrow mountain pass between snow-capped peaks, rocky terrain, frozen streams, snow-bent pine trees, ancient stone watchtower ruins, atmospheric fog, top-down map view, realistic digital painting</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Volcanic Ashlands</h3>
+        <span class="tag">Danger Zone - Special Resources</span>
+      </div>
+      <div class="card-body">
+        Dark volcanic landscape with black sand beaches, obsidian glass formations, and slow-flowing lava rivers (orange-red glow). Sulfur vents creating yellow-green toxic clouds. Sparse twisted vegetation. Ancient ruins half-buried in ash. Rare obsidian and sulfur resources. <strong>Terrain bonus:</strong> Obsidian + sulfur resources, units take fire damage over time, -20% movement.
+        <div class="palette">
+          <span style="background:#1a1a1a"></span>
+          <span style="background:#ff4500"></span>
+          <span style="background:#ff8c00"></span>
+          <span style="background:#8a8a00"></span>
+          <span class="label">Volcanic Black / Magma Red / Lava Orange / Sulfur Yellow</span>
+        </div>
+        <div class="prompt">Generate: Volcanic ashland terrain, black volcanic sand, obsidian glass formations, glowing lava rivers, sulfur vents with toxic clouds, ash-covered ruins, dramatic top-down map view, realistic digital painting</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Mediterranean Coast</h3>
+        <span class="tag">Naval Zone - Trade++</span>
+      </div>
+      <div class="card-body">
+        Dramatic cliff-lined coastline with turquoise waters. Sandy beaches with ancient fishing villages. Natural harbors carved into rocky headlands. Olive groves and vineyards on terraced hillsides above. Ancient lighthouse (Pharos-style) on a peninsula. Merchant ships in the harbor. <strong>Terrain bonus:</strong> Naval access, +25% trade income, +15% food from fishing.
+        <div class="palette">
+          <span style="background:#4a9aba"></span>
+          <span style="background:#f5e8c8"></span>
+          <span style="background:#5a8a5a"></span>
+          <span style="background:#8a7a5a"></span>
+          <span class="label">Turquoise Sea / Sandy Beach / Olive Green / Terracotta</span>
+        </div>
+        <div class="prompt">Generate: Mediterranean coastline, turquoise waters, cliff headlands, sandy beaches, natural harbor with ancient fishing village, terraced olive groves, ancient lighthouse, top-down map view, realistic digital painting</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════════════════════ STRUCTURES ════════════════════ -->
+<div class="section" id="structures">
+  <h2 class="section-title"><span class="icon">&#127963;</span> Ancient Structures & Buildings</h2>
+  <div class="grid">
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Colosseum-Style Arena</h3>
+        <span class="tag">Entertainment - Morale++</span>
+      </div>
+      <div class="card-body">
+        Massive elliptical amphitheater with four tiers of arched arcades. Travertine limestone exterior with rows of Doric, Ionic, and Corinthian columns. Underground hypogeum with animal cages and gladiator chambers. Velarium (canvas awning) partially deployed. Marble seating for 50,000. <strong>Game effect:</strong> +25% army morale, +10% population happiness, trains gladiator units.
+        <div class="palette">
+          <span style="background:#d4c8a0"></span>
+          <span style="background:#a09080"></span>
+          <span style="background:#c0a870"></span>
+          <span style="background:#8a7a6a"></span>
+          <span class="label">Travertine / Warm Stone / Sandstone / Shadow</span>
+        </div>
+        <div class="prompt">Generate: Ancient Roman Colosseum amphitheater, four tiers of arches, travertine stone exterior, partially deployed canvas awning, arena floor visible, dramatic sunset lighting, realistic digital painting, slight aerial angle</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Great Pyramid Complex</h3>
+        <span class="tag">Wonder - Economy++</span>
+      </div>
+      <div class="card-body">
+        Three pyramids of decreasing size aligned on a diagonal. Great Pyramid with smooth white limestone casing (partially stripped showing core blocks below). Valley temple causeway leading to Nile. Sphinx with human head and lion body guarding the complex. Surrounding mastaba tombs and worker village ruins. <strong>Game effect:</strong> World Wonder — +30% gold income, +500 prestige, unique unit: Chariot of Ra.
+        <div class="palette">
+          <span style="background:#f0e8d0"></span>
+          <span style="background:#c0a860"></span>
+          <span style="background:#d4a040"></span>
+          <span style="background:#f5e8c0"></span>
+          <span class="label">Limestone White / Sandstone Gold / Desert Sand / Sky</span>
+        </div>
+        <div class="prompt">Generate: Ancient Egyptian pyramid complex, three pyramids with limestone casing, Great Sphinx, valley temple, causeway, surrounding desert, dramatic lighting, slightly aerial perspective, realistic digital painting</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Parthenon Temple</h3>
+        <span class="tag">Culture - Research++</span>
+      </div>
+      <div class="card-body">
+        Doric temple on raised stylobate platform with perfect golden ratio proportions. 8 columns on short sides, 17 on long sides in white Pentelic marble. Elaborate frieze showing Panathenaic procession. Pediment sculptures of Athena's birth. Interior cella with giant gold-and-ivory Athena Parthenos statue. <strong>Game effect:</strong> +30% research speed, +20% culture, unique tech tree unlock.
+        <div class="palette">
+          <span style="background:#f0ece0"></span>
+          <span style="background:#d4c8b0"></span>
+          <span style="background:#4a7aaa"></span>
+          <span style="background:#c0b890"></span>
+          <span class="label">Pentelic Marble / Warm Stone / Sky Blue / Aged Patina</span>
+        </div>
+        <div class="prompt">Generate: Ancient Greek Parthenon temple, Doric columns, white marble, Acropolis hilltop setting, dramatic blue sky, pediment sculptures visible, slightly aerial perspective, realistic digital painting</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Great Wall Watchtower</h3>
+        <span class="tag">Fortification - Defense++</span>
+      </div>
+      <div class="card-body">
+        Stone and brick watchtower rising from mountain ridge, part of winding Great Wall extending into distance. Battlements with merlon crenellations. Signal fire platform on top (smoke rising). Barracks interior with weapon racks. Arrow slits for defense. Guard quarters and supply storage. <strong>Game effect:</strong> Extended vision range (3 tiles), +40% garrison defense, alerts when enemy approaches.
+        <div class="palette">
+          <span style="background:#8a7a6a"></span>
+          <span style="background:#5a5a4a"></span>
+          <span style="background:#4a6a3a"></span>
+          <span style="background:#6a6a5a"></span>
+          <span class="label">Stone Gray / Brick Brown / Mountain Green / Moss</span>
+        </div>
+        <div class="prompt">Generate: Ancient Great Wall watchtower on mountain ridge, stone and brick construction, battlements with crenellations, signal fire smoke, wall extending into distance, misty mountains, realistic digital painting, slightly aerial view</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Hanging Gardens</h3>
+        <span class="tag">Wonder - Food++</span>
+      </div>
+      <div class="card-body">
+        Multi-tiered ziggurat structure covered in lush cascading vegetation. Stone arches supporting garden terraces overflowing with exotic plants, flowering vines, and small trees. Irrigation channels with flowing water. Shade from date palms. Stone columns wrapped in ivy. Waterfalls cascading between tiers. <strong>Game effect:</strong> World Wonder — +40% food, +20% happiness, surrounding tiles become fertile.
+        <div class="palette">
+          <span style="background:#5a8a5a"></span>
+          <span style="background:#3a6a3a"></span>
+          <span style="background:#a09060"></span>
+          <span style="background:#4a8aba"></span>
+          <span class="label">Lush Green / Deep Foliage / Sandstone / Water Blue</span>
+        </div>
+        <div class="prompt">Generate: Ancient Hanging Gardens of Babylon, multi-tiered ziggurat with lush cascading vegetation, waterfalls between levels, stone arches with ivy, exotic plants, flowing water channels, golden hour lighting, realistic digital painting</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Roman Aqueduct Bridge</h3>
+        <span class="tag">Infrastructure - Growth++</span>
+      </div>
+      <div class="card-body">
+">Grand multi-arch stone aqueduct spanning a deep river valley. Two tiers of arches — massive lower arches for structural support, smaller upper tier carrying the water channel. Rough-hewn stone blocks with visible tool marks. Water flowing through the specus (channel) at top. Moss and vegetation growing on shaded sides. <strong>Game effect:</strong> +25% population growth, connects distant settlements, +10% food for connected cities.
+        <div class="palette">
+          <span style="background:#a09080"></span>
+          <span style="background:#8a7a6a"></span>
+          <span style="background:#6a9a7a"></span>
+          <span style="background:#4a7aaa"></span>
+          <span class="label">Sandstone / Shadow Stone / River Moss / Water Blue</span>
+        </div>
+        <div class="prompt">Generate: Ancient Roman aqueduct bridge spanning river valley, two tiers of stone arches, water channel on top, rough-hewn blocks, moss-covered, dramatic perspective, realistic digital painting</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Viking Longhouse Settlement</h3>
+        <span class="tag">Military Camp - Training++</span>
+      </div>
+      <div class="card-body">
+        Cluster of timber longhouses with curved turf roofs in a fortified enclosure. Wooden palisade walls with watchtowers at corners. Central longhall with carved dragon prow decoration on the gable. Weapons forge with bellows smoke. Ship burial mounds nearby. Fjord visible behind the settlement. <strong>Game effect:</strong> +20% unit training speed, +15% infantry attack, unlocks Berserker units.
+        <div class="palette">
+          <span style="background:#5a3a1a"></span>
+          <span style="background:#3a6a3a"></span>
+          <span style="background:#4a4a3a"></span>
+          <span style="background:#2a2a2a"></span>
+          <span class="label">Timber Brown / Turf Green / Dark Wood / Charcoal</span>
+        </div>
+        <div class="prompt">Generate: Ancient Viking longhouse settlement, timber buildings with turf roofs, wooden palisade fortification, dragon-carved longhall, forge with smoke, fjord background, realistic digital painting, slightly aerial view</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Underground Catacombs</h3>
+        <span class="tag">Hidden - Stealth++</span>
+      </div>
+      <div class="card-body">
+        Subterranean tunnel network beneath a city with flickering oil lamp lighting. Stone corridors with burial niches (loculi) carved into walls. Hidden chambers with treasure hoards and secret passages. Circular rotunda with skylight shaft. Meeting room for secret operations. Spider webs and dust motes in light beams. <strong>Game effect:</strong> Hidden movement, ambush exit points, stores gold safely, spy recruitment center.
+        <div class="palette">
+          <span style="background:#4a3a2a"></span>
+          <span style="background:#d4a040"></span>
+          <span style="background:#6a5a4a"></span>
+          <span style="background:#2a1a0a"></span>
+          <span class="label">Tunnel Stone / Lamp Fire / Burial Stone / Deep Shadow</span>
+        </div>
+        <div class="prompt">Generate: Ancient underground catacombs, stone tunnel corridors, burial niches in walls, flickering oil lamps, hidden treasure chamber, dramatic chiaroscuro lighting, realistic digital painting</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Persian Fire Temple (Zoroastrian)</h3>
+        <span class="tag">Religious - Prestige++</span>
+      </div>
+      <div class="card-body">
+        Elevated stone platform temple with four corner towers surrounding a central sacred flame chamber. Silver and gold domed roof reflecting firelight. Winged bull (lamassu) guardian statues flanking the entrance stairs. Carved stone friezes showing Ahura Mazda. Eternal flame visible through lattice windows. <strong>Game effect:</strong> +30% prestige, +15% morale, unique tech: Immortal training.
+        <div class="palette">
+          <span style="background:#c0c0c0"></span>
+          <span style="background:#d4a948"></span>
+          <span style="background:#ff6a00"></span>
+          <span style="background:#2a2a2a"></span>
+          <span class="label">Silver Stone / Gold Accents / Sacred Fire / Night</span>
+        </div>
+        <div class="prompt">Generate: Ancient Persian Zoroastrian fire temple, elevated stone platform, silver domed roof, winged bull lamassu guardians, eternal sacred flame, carved stone friezes, dramatic firelight, night scene, realistic digital painting</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════════════════════ UI & EFFECTS ════════════════════ -->
+<div class="section" id="ui">
+  <h2 class="section-title"><span class="icon">&#9881;</span> UI Elements & Visual Effects</h2>
+  <div class="grid">
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Territory Border Glow</h3>
+        <span class="tag">Map Overlay</span>
+      </div>
+      <div class="card-body">
+        Each empire's territory has a subtle animated border glow in their faction color. Inside the territory, a faint vignette tint shows ownership. When borders shift (conquer/lose), a pulse animation ripples along the new border line. At war: border flashes angry red. At peace: calm steady glow. Allied: dual-color blend.
+        <div class="palette">
+          <span style="background:#ff4444"></span><span style="background:#4444ff"></span><span style="background:#44ff44"></span><span style="background:#d4a948"></span>
+          <span class="label">Rome Red / Greece Blue / Celts Green / Persia Gold</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Battle Smoke & Dust</h3>
+        <span class="tag">Combat VFX</span>
+      </div>
+      <div class="card-body">
+        When armies clash, particle effects of dust clouds and smoke rise from battle locations on the map. Arrows show as streaking lines between units. Cavalry charges leave trail effects. Victorious battles show a brief golden pillar of light. Defeated armies show fading skull markers. Siege battles show burning city effects.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Unit Card Design</h3>
+        <span class="tag">UI Component</span>
+      </div>
+      <div class="card-body">
+        Each unit type gets a card with: stylized portrait on left (dark vignette), stats bars in center (attack/defense/speed/morale as colored bars), faction emblem watermark behind stats, golden border with tier stars (1-4), and a small animated icon showing the unit's weapon/type. Cards have parchment texture background.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section">
+  <div class="note">
+    <strong>How to use these concepts:</strong><br>
+    1. Each card includes an AI image generation prompt (in the monospace box) — paste it into any image generator (Midjourney, DALL-E, Stable Diffusion, ComfyUI) to create concept art<br>
+    2. The color palettes define the faction/terrain identity — use these hex values when coding the game's color scheme<br>
+    3. Each unit/structure has game mechanics notes (terrain bonuses, effects) — integrate these into your combat.js and map.js logic<br>
+    4. Start with the base game units (Tier 1-2), then add elite units as the player progresses<br>
+    5. All structures are designed to be isometric or top-down compatible for your web game renderer
+  </div>
+</div>
+
+<br><br>
+
+</body>
+</html>

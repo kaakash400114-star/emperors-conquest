@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html><head>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+window.onerror = function(m,s,l,c,e) {
+    document.title = 'ERR: ' + m + ' @' + l;
+    return true;
+};
+window.addEventListener('unhandledrejection', function(e) {
+    document.title = 'REJ: ' + (e.reason?.message || e.reason);
+});
+</script>
+</head><body>
+<canvas id="gl"></canvas>
+<canvas id="ui"></canvas>
+<script type="module" src="src/main.js"></script>
+</body></html>

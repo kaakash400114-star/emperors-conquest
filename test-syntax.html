@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html><body>
+<div id="out" style="white-space:pre-wrap;font:12px monospace"></div>
+<script type="module">
+const out = document.getElementById('out');
+async function test() {
+  try {
+    await import('./src/map.js');
+    out.textContent += 'map.js: OK\n';
+  } catch(e) { out.textContent += 'map.js: ' + e.message + '\n'; }
+  
+  try {
+    await import('./src/combat.js');
+    out.textContent += 'combat.js: OK\n';
+  } catch(e) { out.textContent += 'combat.js: ' + e.message + '\n'; }
+  
+  try {
+    await import('./src/audio.js');
+    out.textContent += 'audio.js: OK\n';
+  } catch(e) { out.textContent += 'audio.js: ' + e.message + '\n'; }
+  
+  try {
+    await import('./src/renderer.js');
+    out.textContent += 'renderer.js: OK\n';
+  } catch(e) { out.textContent += 'renderer.js: ' + e.message + '\n' + e.stack.split('\n').slice(0,8).join('\n') + '\n'; }
+}
+test();
+</script>
+</body></html>

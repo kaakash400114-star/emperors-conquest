@@ -103,7 +103,7 @@ export function resolveCombat(atkTroops, defTroops, atkEmpire, defEmpire, defTer
         defLeft: Math.max(0, defTroops - defLoss),
         coins,
         strategy: str.name,
-        atkWeapon: atkWeapon ? atkWeapon.name : 'Sword',
-        defWeapon: defWeapon ? defWeapon.name : 'Sword',
+        atkWeapon: atkWeapon ? atkWeapon.name : 'Rifle',
+        defWeapon: defWeapon ? defWeapon.name : 'Rifle',
     };
 }

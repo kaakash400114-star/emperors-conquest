@@ -7,46 +7,61 @@ export const MAP_W = 960, MAP_H = 640, T_RADIUS = 0;
 
 export const TERRITORIES = [
   // East Asia (right side)
-  { id:0,  name:'Indus Valley',   cx:680, cy:340, terrain:'desert',      def:0, adj:[1,2,4],
+  { id:0,  name:'Indus Valley',   cx:680, cy:340, terrain:'desert',      def:0, adj:[1,2,4], label:[680,340],
     poly:[[640,310],[710,310],[720,340],[710,375],[660,380],[630,360]] },
-  { id:1,  name:'Ganges',         cx:790, cy:380, terrain:'plains',      def:0, adj:[0,2,17],
+  { id:1,  name:'Ganges',         cx:790, cy:380, terrain:'plains',      def:0, adj:[0,2,17,19], label:[790,380],
     poly:[[750,345],[830,345],[840,385],[830,420],[760,420],[740,385]] },
-  { id:2,  name:'Persia',         cx:600, cy:280, terrain:'desert',      def:1, adj:[0,1,3,4,6],
+  { id:2,  name:'Persia',         cx:600, cy:280, terrain:'desert',      def:1, adj:[0,1,3,4,6,21], label:[600,280],
     poly:[[545,250],[660,250],[660,305],[630,330],[570,330],[535,300]] },
-  { id:3,  name:'Mesopotamia',    cx:555, cy:340, terrain:'plains',      def:0, adj:[2,4,6,10],
+  { id:3,  name:'Mesopotamia',    cx:555, cy:340, terrain:'plains',      def:0, adj:[2,4,6,10], label:[555,340],
     poly:[[520,310],[590,310],[600,345],[590,375],[530,380],[510,350]] },
-  { id:4,  name:'Arabia',         cx:570, cy:430, terrain:'desert',      def:1, adj:[0,2,3,5],
+  { id:4,  name:'Arabia',         cx:570, cy:430, terrain:'desert',      def:1, adj:[0,2,3,5,23], label:[570,430],
     poly:[[530,390],[620,390],[630,435],[610,470],[540,475],[520,440]] },
-  { id:5,  name:'Egypt',          cx:480, cy:460, terrain:'desert',      def:0, adj:[4,7,16],
+  { id:5,  name:'Egypt',          cx:480, cy:460, terrain:'desert',      def:0, adj:[4,7,16,23], label:[480,460],
     poly:[[445,430],[520,430],[525,470],[510,500],[450,505],[435,470]] },
   // Mediterranean & Europe (center)
-  { id:6,  name:'Anatolia',       cx:520, cy:240, terrain:'mountains',   def:2, adj:[2,3,7,8,10,15],
+  { id:6,  name:'Anatolia',       cx:520, cy:240, terrain:'mountains',   def:2, adj:[2,3,7,8,10,15], label:[520,240],
     poly:[[475,210],[570,210],[575,255],[560,275],[490,280],[470,255]] },
-  { id:7,  name:'Greece',         cx:470, cy:300, terrain:'coast',       def:1, adj:[5,6,8,15],
+  { id:7,  name:'Greece',         cx:470, cy:300, terrain:'coast',       def:1, adj:[5,6,8,15], label:[470,300],
     poly:[[445,270],[500,270],[505,310],[490,335],[450,340],[435,310]] },
-  { id:8,  name:'Italia',         cx:420, cy:340, terrain:'coast',       def:0, adj:[6,7,9,10],
+  { id:8,  name:'Italia',         cx:420, cy:340, terrain:'coast',       def:0, adj:[6,7,9,10], label:[420,340],
     poly:[[395,310],[450,310],[455,350],[445,380],[405,385],[390,355]] },
-  { id:9,  name:'Gaul',           cx:340, cy:230, terrain:'plains',      def:0, adj:[8,10,11,12,15],
+  { id:9,  name:'Gaul',           cx:340, cy:230, terrain:'plains',      def:0, adj:[8,10,11,12,15], label:[340,230],
     poly:[[295,200],[390,200],[395,245],[385,270],[310,275],[290,245]] },
-  { id:10, name:'Hispania',       cx:310, cy:380, terrain:'peninsula',   def:1, adj:[3,6,8,9,16],
+  { id:10, name:'Hispania',       cx:310, cy:380, terrain:'peninsula',   def:1, adj:[3,6,8,9,16], label:[310,380],
     poly:[[270,345],[355,345],[360,390],[345,425],[280,430],[265,395]] },
   // Northern Europe (top center)
-  { id:11, name:'Britannia',      cx:280, cy:120, terrain:'island',      def:1, adj:[9,12,13],
+  { id:11, name:'Britannia',      cx:280, cy:120, terrain:'island',      def:1, adj:[9,12,13], label:[280,120],
     poly:[[250,85],[315,85],[320,125],[310,160],[260,165],[245,130]] },
-  { id:12, name:'Germania',       cx:390, cy:160, terrain:'forest',      def:2, adj:[9,11,13,14,15],
+  { id:12, name:'Germania',       cx:390, cy:160, terrain:'forest',      def:2, adj:[9,11,13,14,15], label:[390,160],
     poly:[[350,130],[435,130],[440,175],[430,200],[360,205],[345,175]] },
-  { id:13, name:'Scandinavia',    cx:360, cy:60,  terrain:'mountains',   def:2, adj:[11,12,14],
+  { id:13, name:'Scandinavia',    cx:360, cy:60,  terrain:'mountains',   def:2, adj:[11,12,14,22], label:[360,60],
     poly:[[325,30],[400,30],[405,75],[395,105],[340,110],[320,75]] },
-  { id:14, name:'Eastern Europe', cx:490, cy:160, terrain:'plains',      def:0, adj:[12,13,15],
+  { id:14, name:'Eastern Europe', cx:490, cy:160, terrain:'plains',      def:0, adj:[12,13,15,21], label:[490,160],
     poly:[[455,130],[530,130],[535,175],[525,200],[465,205],[450,175]] },
-  { id:15, name:'Balkans',        cx:440, cy:260, terrain:'mountains',   def:1, adj:[6,7,9,12,14],
+  { id:15, name:'Balkans',        cx:440, cy:260, terrain:'mountains',   def:1, adj:[6,7,9,12,14], label:[440,260],
     poly:[[405,230],[480,230],[485,265],[475,290],[415,295],[400,265]] },
   // Africa (bottom left)
-  { id:16, name:'North Africa',   cx:350, cy:490, terrain:'coast',       def:1, adj:[5,10],
+  { id:16, name:'North Africa',   cx:350, cy:490, terrain:'coast',       def:1, adj:[5,10,20], label:[350,490],
     poly:[[300,460],[405,460],[410,500],[395,535],[315,540],[295,505]] },
   // Far East (far right)
-  { id:17, name:'Japan',          cx:880, cy:220, terrain:'island',      def:1, adj:[1],
+  { id:17, name:'Japan',          cx:880, cy:220, terrain:'island',      def:1, adj:[1,18,24], label:[880,220],
     poly:[[850,185],[915,185],[920,225],[910,260],[855,265],[845,230]] },
+  // New territories (18-24)
+  { id:18, name:'China',          cx:810, cy:140, terrain:'plains',      def:1, adj:[13,17,19,21,22,24], label:[810,140],
+    poly:[[770,110],[850,110],[860,150],[850,190],[780,190],[770,150]] },
+  { id:19, name:'Southeast Asia', cx:800, cy:350, terrain:'forest',      def:0, adj:[1,18,20], label:[800,350],
+    poly:[[760,320],[840,320],[850,360],[840,400],[770,400],[760,360]] },
+  { id:20, name:'Sub-Saharan Africa', cx:400, cy:570, terrain:'plains',  def:0, adj:[16,19,23], label:[400,570],
+    poly:[[350,540],[450,540],[460,580],[450,620],[360,620],[350,580]] },
+  { id:21, name:'Central Asia',   cx:700, cy:180, terrain:'desert',      def:1, adj:[2,13,14,18,22], label:[700,180],
+    poly:[[660,150],[740,150],[750,190],[740,220],[670,220],[660,190]] },
+  { id:22, name:'Siberia',        cx:750, cy:40,  terrain:'mountains',   def:2, adj:[13,18,21,23], label:[750,40],
+    poly:[[710,10],[800,10],[810,50],[800,80],[720,80],[710,50]] },
+  { id:23, name:'Ethiopia',       cx:520, cy:520, terrain:'mountains',   def:1, adj:[4,5,20,22], label:[520,520],
+    poly:[[480,495],[560,495],[570,535],[560,565],[490,565],[480,535]] },
+  { id:24, name:'Korea',          cx:870, cy:120, terrain:'mountains',   def:1, adj:[17,18], label:[870,120],
+    poly:[[845,90],[900,90],[905,130],[895,160],[850,160],[845,130]] },
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -176,6 +191,39 @@ export const MAP_BG = {
     // Kyushu
     [[882,185],[892,180],[900,185],[902,198],[898,210],[890,215],
      [883,210],[880,200],[882,185]],
+
+    // ── NEW TERRITORY LAND POLYGONS ────────────────────────
+    // Siberia / Northern Asia (vast taiga)
+    [[700,5],[720,2],[760,5],[800,8],[820,15],[830,35],[825,55],
+     [815,70],[800,80],[780,90],[760,95],[740,90],[720,85],
+     [710,70],[705,50],[698,30],[700,5]],
+    // Extended China coast (eastern seaboard)
+    [[835,95],[855,90],[870,100],[880,115],[890,130],[885,150],
+     [875,170],[860,180],[845,190],[830,200],[820,195],
+     [810,185],[800,175],[790,165],[785,150],[790,130],
+     [795,115],[810,105],[825,100],[835,95]],
+    // Korean Peninsula (extended)
+    [[868,88],[878,82],[888,85],[895,95],[900,115],[898,135],
+     [892,155],[885,168],[878,172],[870,165],[865,150],
+     [862,135],[860,118],[862,102],[868,88]],
+    // Central Asian steppe (extended)
+    [[570,85],[600,78],[640,75],[680,80],[720,85],[750,95],
+     [755,110],[750,130],[740,145],[720,155],[700,165],
+     [680,170],[660,168],[640,165],[620,158],[600,148],
+     [585,135],[575,115],[570,100],[570,85]],
+    // Sub-Saharan Africa (west extension)
+    [[265,535],[285,530],[310,528],[335,530],[355,535],
+     [375,545],[385,555],[390,570],[388,585],[380,598],
+     [370,608],[355,615],[340,618],[325,612],[315,600],
+     [305,585],[298,570],[290,555],[275,548],[265,535]],
+    // Ethiopia / Horn of Africa (detailed)
+    [[480,465],[500,458],[520,460],[535,468],[545,480],
+     [548,495],[545,510],[535,525],[520,535],[505,540],
+     [490,535],[480,525],[475,510],[472,495],[475,480],[480,465]],
+    // Southeast Asia extension (Indochina mainland)
+    [[790,310],[810,305],[830,310],[848,325],[855,345],
+     [858,365],[855,385],[845,400],[830,408],[815,405],
+     [800,395],[790,378],[785,355],[783,335],[785,320],[790,310]],
 
     // ════════════════════════════════════════════════════════════
     // NEW WORLD — NORTH AMERICA
@@ -478,46 +526,61 @@ export const MAP_BG = {
 
 export const EMPIRES = {
   maurya:  { id:'maurya',  name:'Maurya Empire',       era:'Ancient India 322 BC',   color:'#e67e22', dark:'#d35400', light:'#f39c12', text:'#fff',
-             bonus:'+2 coins per territory', bonusType:'income', icon:'\u2694' },
+             emperor:'Emperor Ashoka',       bonus:'+2 coins per territory', bonusType:'income', icon:'\u2694' },
   roman:   { id:'roman',   name:'Roman Empire',        era:'Ancient Rome 27 BC',      color:'#c0392b', dark:'#922b21', light:'#e74c3c', text:'#fff',
-             bonus:'+1 defense all territories',       bonusType:'defense', icon:'\u265E' },
+             emperor:'Julius Caesar',         bonus:'+1 defense all territories',       bonusType:'defense', icon:'\u265E' },
   mongol:  { id:'mongol',  name:'Mongol Empire',       era:'Mongolia 1206 AD',        color:'#7f8c8d', dark:'#5d6d7e', light:'#95a5a6', text:'#fff',
-             bonus:'+1 attack in combat',              bonusType:'attack', icon:'\u2694' },
+             emperor:'Genghis Khan',           bonus:'+1 attack in combat',              bonusType:'attack', icon:'\u2694' },
   ottoman: { id:'ottoman', name:'Ottoman Empire',      era:'Turkey 1299 AD',          color:'#16a085', dark:'#0e6655', light:'#1abc9c', text:'#fff',
-             bonus:'+1 defense mountains',             bonusType:'fortress', icon:'\u2626' },
+             emperor:'Sultan Suleiman',        bonus:'+1 defense mountains',             bonusType:'fortress', icon:'\u2626' },
   british: { id:'british', name:'British Empire',      era:'England 1588 AD',         color:'#2c3e50', dark:'#1a252f', light:'#34495e', text:'#fff',
-             bonus:'+2 coins per territory',            bonusType:'bonus', icon:'\u2693' },
+             emperor:'Queen Victoria',         bonus:'+2 coins per territory',            bonusType:'bonus', icon:'\u2693' },
   napoleon:{ id:'napoleon',name:"Napoleon's France",   era:'France 1804 AD',          color:'#2980b9', dark:'#1f618d', light:'#3498db', text:'#fff',
-             bonus:'+2 attack on plains',              bonusType:'plains', icon:'\u2660' },
+             emperor:'Napoleon Bonaparte',     bonus:'+2 attack on plains',              bonusType:'plains', icon:'\u2660' },
   japan:   { id:'japan',   name:'Imperial Japan',      era:'Japan 1868 AD',           color:'#e74c3c', dark:'#c0392b', light:'#ff6b6b', text:'#fff',
-             bonus:'+2 defense on islands',            bonusType:'island', icon:'\u265B' },
+             emperor:'Emperor Meiji',         bonus:'+2 defense on islands',            bonusType:'island', icon:'\u265B' },
   germany: { id:'germany', name:'Nazi Germany',        era:'Germany 1939 AD',         color:'#444444', dark:'#222222', light:'#666666', text:'#fff',
-             bonus:'+3 coins per territory',          bonusType:'warMachine', icon:'\u2620' },
+             emperor:'Otto von Bismarck',      bonus:'+3 coins per territory',          bonusType:'warMachine', icon:'\u2620' },
   russia:  { id:'russia',  name:'Soviet Russia',      era:'USSR 1922 AD',            color:'#cc0000', dark:'#990000', light:'#ff3333', text:'#fff',
-             bonus:'Soldiers cost -5 coins',           bonusType:'cheap', icon:'\u2603' },
+             emperor:'Catherine the Great',   bonus:'Soldiers cost -5 coins',           bonusType:'cheap', icon:'\u2603' },
   egypt:   { id:'egypt',   name:'Egyptian Empire',     era:'Egypt 3100 BC',           color:'#f1c40f', dark:'#d4a017', light:'#f7dc6f', text:'#1a1a2e',
-             bonus:'+3 coins from desert territories',  bonusType:'desert', icon:'\u2600' },
+             emperor:'Pharaoh Ramses II',     bonus:'+3 coins from desert territories',  bonusType:'desert', icon:'\u2600' },
+  chinese: { id:'chinese', name:'Chinese Empire',       era:'China 221 BC',             color:'#dc143c', dark:'#8b0000', light:'#ff4444', text:'#fff',
+             emperor:'Emperor Qin Shi Huang', bonus:'+2 defense all territories',        bonusType:'defense', icon:'\u{1F3F9}' },
+  aztec:   { id:'aztec',   name:'Aztec Empire',         era:'Mexico 1428 AD',           color:'#228b22', dark:'#006400', light:'#32cd32', text:'#fff',
+             emperor:'Montezuma II',           bonus:'+3 coins from forest territories', bonusType:'forest', icon:'\u{1F3D8}' },
+  zulu:    { id:'zulu',    name:'Zulu Kingdom',          era:'Southern Africa 1816 AD',  color:'#8b4513', dark:'#5c2d00', light:'#a0522d', text:'#fff',
+             emperor:'King Shaka',             bonus:'+2 attack on plains',             bonusType:'plains', icon:'\u{1F3F5}' },
+  byzantine:{ id:'byzantine', name:'Byzantine Empire',  era:'Byzantium 330 AD',         color:'#9400d3', dark:'#6a0dad', light:'#ba55d3', text:'#fff',
+             emperor:'Emperor Justinian',     bonus:'+2 coins per territory',            bonusType:'income', icon:'\u2654' },
+  persian: { id:'persian', name:'Achaemenid Persia',    era:'Iran 550 BC',               color:'#ffd700', dark:'#b8860b', light:'#ffec8b', text:'#1a1a2e',
+             emperor:'Cyrus the Great',       bonus:'+1 attack in combat',              bonusType:'attack', icon:'\u269B' },
 };
 
 export const EIDS = Object.keys(EMPIRES);
 
   // FIX: Japan now connects to Ganges [1] (Asian sea route) instead of Eastern Europe [14] / Scandinavia [13]
 export const STARTS = {
-  maurya:  { t:[0,1],       troops:[6,4] },
-  roman:   { t:[8],         troops:[7] },
-  mongol:  { t:[3],         troops:[6] },
-  ottoman: { t:[6,15],      troops:[5,3] },
-  british: { t:[11],        troops:[6] },
-  napoleon:{ t:[9],         troops:[6] },
-  japan:   { t:[17],        troops:[5] },
-  germany: { t:[12],        troops:[6] },
-  russia:  { t:[13,14],     troops:[4,5] },
-  egypt:   { t:[5],         troops:[6] },
+  maurya:    { t:[0,1],       troops:[6,4] },
+  roman:     { t:[8],         troops:[7] },
+  mongol:    { t:[3],         troops:[6] },
+  ottoman:   { t:[6,15],      troops:[5,3] },
+  british:   { t:[11],        troops:[6] },
+  napoleon:  { t:[9],         troops:[6] },
+  japan:     { t:[17],        troops:[5] },
+  germany:   { t:[12],        troops:[6] },
+  russia:    { t:[13,14],     troops:[4,5] },
+  egypt:     { t:[5],         troops:[6] },
+  chinese:   { t:[18],        troops:[6] },
+  aztec:     { t:[20],        troops:[5] },
+  zulu:      { t:[23],        troops:[5] },
+  byzantine: { t:[7],         troops:[5] },
+  persian:   { t:[21],        troops:[6] },
 };
 
 // Neutrals: territories with no owner at start, but some troops guarding them
 // Territory 14 is no longer neutral since Russia starts there
-export const NEUTRALS = { 2:3, 4:3, 7:3, 10:3, 16:3 };
+export const NEUTRALS = { 2:3, 4:3, 10:3, 16:3, 19:3, 22:3, 24:3 };
 
 // Weapons: tier → name, atk bonus, def bonus, cost to unlock
 // Tier 1 weapons are free. Higher tiers must be unlocked.
@@ -690,9 +753,59 @@ export const EMPIRE_STORIES = {
     "The Rosetta Stone, discovered in 1799, allowed scholars to decode Egyptian hieroglyphs for the first time in 1,400 years.",
     "Ancient Egyptians believed in the afterlife and mummified their dead. The entire process took 70 days and involved removing all internal organs except the heart.",
   ],
+  chinese: [
+    "The Chinese Empire, founded by Qin Shi Huang in 221 BC, was the first unified Chinese state. He standardized writing, weights, measures, and currency across all of China.",
+    "The Great Wall of China, begun under Qin Shi Huang, stretches over 21,000 km and took over 2,000 years to complete. It is the longest structure ever built by humans.",
+    "China invented paper, gunpowder, the compass, and printing — the 'Four Great Inventions' that transformed world civilization.",
+    "The Terracotta Army, discovered in 1974 near Xi'an, contains over 8,000 unique warrior statues, each with different facial features, built to guard Qin Shi Huang's tomb.",
+    "The Silk Road connected China to Rome, spanning 6,400 km. Chinese silk was so valuable in Rome that it was once worth its weight in gold.",
+    "The Han Dynasty (206 BC - 220 AD) was one of China's golden ages, inventing paper and establishing the civil service examination system that lasted 1,300 years.",
+    "Admiral Zheng He's treasure fleet of 300 ships and 28,000 men explored the Indian Ocean in the 1400s — decades before European voyages of discovery.",
+    "Chinese civilization is one of the world's oldest, spanning over 4,000 years of continuous recorded history — longer than any other civilization on Earth.",
+  ],
+  aztec: [
+    "The Aztec Empire, founded in 1428 AD, controlled central Mexico from its capital Tenochtitlan, built on an island in Lake Texcoco — now modern Mexico City.",
+    "Tenochtitlan was one of the largest cities in the world, with over 200,000 inhabitants. Its causeways and aqueducts were engineering marvels that amazed the Spanish conquistadors.",
+    "The Aztecs built chinampas — floating gardens on Lake Texcoco — an incredibly productive farming system that could yield 7 crops per year.",
+    "Aztec warriors were among the fiercest in Mesoamerica. Their eagle and jaguar knights were elite fighters who wore costumes made from real animal pelts.",
+    "The Aztecs played ullamaliztli, a ball game using a rubber ball that could not be touched with hands or feet. Courts have been found across Mesoamerica.",
+    "Moctezuma II, the last Aztec emperor, ruled an empire of 5-6 million people when Hernan Cortes arrived with just 500 Spanish soldiers in 1519.",
+    "The Aztec sun stone calendar, weighing 24 tons, tracked the solar year of 365 days and the sacred 52-year calendar cycle.",
+    "Aztec astronomers could predict eclipses and calculated the solar year to within seconds of modern measurements — all without telescopes.",
+  ],
+  zulu: [
+    "The Zulu Kingdom was founded by King Shaka in 1816 AD. He revolutionized African warfare by introducing the 'bull horn' formation that outflanked enemy armies.",
+    "Shaka Zulu transformed a small clan of 1,500 people into a nation of 250,000 warriors in just 12 years — one of history's most rapid military expansions.",
+    "The Zulu 'Impi' (regiment) system organized warriors by age groups. Men trained together from age 16 and remained brothers-in-arms for life.",
+    "Zulu warriors fought with the iklwa — a short stabbing spear designed by Shaka that replaced the traditional throwing assegai, forcing close-quarters combat.",
+    "The Battle of Isandlwana (1879) was the worst defeat ever suffered by the British Army at the hands of a native force. 1,300 British soldiers fell to 20,000 Zulu warriors.",
+    "Zulu shields (isihlangu) were color-coded: white for veterans, black for young warriors. The shield's size indicated rank within the regiment.",
+    "Zulu beadwork was a complex language — colors and patterns conveyed messages about social status, marital availability, and emotions.",
+    "The Zulu Nation still exists today in South Africa, with over 11 million Zulu people making it the largest ethnic group in the country.",
+  ],
+  byzantine: [
+    "The Byzantine Empire lasted from 330 AD to 1453 — over 1,100 years, making it the longest-lasting empire in history.",
+    "Constantinople (modern Istanbul) was the world's largest and wealthiest city for nearly 1,000 years, protected by the legendary Theodosian Walls.",
+    "Emperor Justinian (527-565 AD) reconquered Italy, North Africa, and southern Spain, and built the Hagia Sophia — the world's largest cathedral for 1,000 years.",
+    "Byzantine scholars preserved ancient Greek and Roman knowledge through the Dark Ages, and their libraries fueled the Italian Renaissance.",
+    "Greek Fire was a devastating Byzantine secret weapon — an incendiary formula that burned on water. Its composition remains unknown to this day.",
+    "The Byzantine economy was the most advanced in medieval Europe, with a gold coin (the solidus) that was the standard currency for international trade.",
+    "Byzantine mosaic art, found in churches across the empire, used millions of gold-glass tesserae to create shimmering religious images that still glow today.",
+    "The fall of Constantinople in 1453 ended the Byzantine Empire. The last Emperor, Constantine XI, died fighting on the walls rather than surrender.",
+  ],
+  persian: [
+    "The Achaemenid Persian Empire (550-330 BC), founded by Cyrus the Great, was the first 'world empire,' stretching from the Indus Valley to Egypt and Greece.",
+    "Cyrus the Great issued the Cyrus Cylinder in 539 BC — considered the first charter of human rights, declaring freedom of religion and abolishing slavery.",
+    "The Royal Road, built by the Persians, stretched 2,699 km from Susa to Sardis. Royal couriers could travel its entire length in just 9 days using relay stations.",
+    "Persepolis, the ceremonial capital of Persia, was one of the most magnificent cities of the ancient world. Its ruins still awe visitors today in southern Iran.",
+    "The Persian Immortals were an elite guard of 10,000 warriors — named because their numbers never dropped. Fallen soldiers were immediately replaced, making them seem immortal.",
+    "Persian engineers built the qanat system — underground aqueducts that carried water across deserts for hundreds of kilometers. Many qanats are still in use today.",
+    "Darius the Great organized the empire into satrapies (provinces) and built a standardized postal system, tax system, and legal code across three continents.",
+    "The Persians invented the concept of human rights, religious tolerance, and centralized administration — foundations of modern governance that influenced every empire that followed.",
+  ],
 };
 
-// Territory-specific historical facts (shown when territory is selected/conquered)
+// Territory-specific historical facts
 export const TERRITORY_STORIES = {
   0: "The Indus Valley Civilization (3300-1300 BC) had the world's first known urban sanitation systems, with flush toilets and covered drains in every home.",
   1: "The Ganges River is considered sacred by Hindus. Over 400 million people depend on it for water, food, and spiritual practice.",
@@ -712,6 +825,13 @@ export const TERRITORY_STORIES = {
   15: "The Balkans have been a crossroads of civilizations for millennia. The region gave birth to the Cyrillic alphabet, still used by 250 million people.",
   16: "North Africa's Mediterranean coast was the 'breadbasket of Rome.' Carthage (modern Tunisia) rivaled Rome until its destruction in 146 BC.",
   17: "Japan's isolation for over 200 years (1639-1854) allowed it to develop a unique culture. When it opened, it rapidly modernized and became a world power.",
+  18: "China's Forbidden City in Beijing, home to 24 emperors over 500 years, contains 9,999 rooms — one less than 10,000, which was reserved for the gods.",
+  19: "Southeast Asia's Angkor Wat, built in the 12th century in modern Cambodia, is the world's largest religious structure and was originally dedicated to the Hindu god Vishnu.",
+  20: "Sub-Saharan Africa's Kingdom of Great Zimbabwe (1100-1450 AD) built stone structures so impressive that European colonists initially refused to believe Africans had built them.",
+  21: "Central Asia's Silk Road was the internet of the ancient world — a network of trade routes spanning 6,400 km that connected China to the Mediterranean for over 1,500 years.",
+  22: "Siberia covers 13.1 million square kilometers — about 77% of Russia's total land area — yet has only 27% of its population. Temperatures can drop below -50°C in winter.",
+  23: "Ethiopia is one of the oldest continuous civilizations in the world. The Kingdom of Aksum, which rose around 100 AD, was one of the four great powers of the ancient world.",
+  24: "Korea's Joseon Dynasty (1392-1897) lasted over 500 years and invented the world's first movable metal type printing press — 200 years before Gutenberg's press in Europe.",
 };
 
 export const T = (id) => TERRITORIES[id];
