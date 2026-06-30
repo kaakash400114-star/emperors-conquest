@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/kaakash400114-star/emperors-conquest#readme",
   "dependencies": {
+    "puppeteer": "^25.1.0",
     "ws": "^8.20.1"
   }
 }

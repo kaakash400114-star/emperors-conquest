@@ -228,14 +228,32 @@ export class Renderer {
     }
 
     terrAt(sx, sy) {
+        const g = this.g;
+        const activeTerr = g._activeTerritories || TERRITORIES;
         const m = this.toMap(sx, sy);
-        for (const t of TERRITORIES) {
-            const polys = t.polys || (t.poly ? [t.poly] : []);
-            for (const p of polys) {
-                if (this._pointInPoly(m.x, m.y, p)) return t.id;
+
+        if (activeTerr.length <= 30 && activeTerr[0]?.poly) {
+            for (let i = activeTerr.length - 1; i >= 0; i--) {
+                const t = activeTerr[i];
+                const polys = t.polys || (t.poly ? [t.poly] : []);
+                for (const p of polys) {
+                    if (this._pointInPoly(m.x, m.y, p)) return i;
+                }
             }
         }
-        return -1;
+        
+        let bestDist = Infinity, bestId = -1;
+        const clickRadius = 45;
+        for (let i = 0; i < activeTerr.length; i++) {
+            const t = activeTerr[i];
+            const dx = m.x - t.cx, dy = m.y - t.cy;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < clickRadius && dist < bestDist) {
+                bestDist = dist;
+                bestId = i;
+            }
+        }
+        return bestId;
     }
 
     // ── BACKGROUND — Ancient parchment / aged map texture ──
@@ -1155,6 +1173,7 @@ export class Renderer {
     // ── MENU ──────────────────────────────────────────────────
     _menu() {
         const c = this.ctx, g = this.g, { W, H } = g;
+        g.btns = [];
 
         // ── BRIGHT COLORFUL BACKGROUND ──
         const bgGr = c.createRadialGradient(W/2, H*0.3, 50, W/2, H/2, W*0.9);
@@ -1340,10 +1359,10 @@ export class Renderer {
         // ── BUTTONS: Mode Selection ──
         const btnY = H * 0.84;
         const btnW = 160, btnH = 44, btnGap = 12;
-        const totalW = btnW * 3 + btnGap * 2;
+        const totalW = btnW * 2 + btnGap;
         const startX = W/2 - totalW/2;
 
-        // Offline button
+        // Start button
         const offX = startX, offY = btnY;
         this.g._offlineBtnRect = { x: offX, y: offY, w: btnW, h: btnH };
         const offGr = c.createLinearGradient(offX, offY, offX, offY+btnH);
@@ -1353,24 +1372,19 @@ export class Renderer {
         this._rr(c, offX, offY, btnW, btnH, 10); c.stroke();
         c.fillStyle = '#FFFFFF'; c.font = 'bold 14px "Segoe UI", sans-serif';
         c.textAlign = 'center'; c.textBaseline = 'middle';
-        c.fillText('\u{1F3DB} Offline', offX + btnW/2, offY + btnH/2);
-
-        // Online Battle button
-        const onX = startX + btnW + btnGap, onY = btnY;
-        this.g._onlineBtnRect = { x: onX, y: onY, w: btnW, h: btnH };
-        const onGr = c.createLinearGradient(onX, onY, onX, onY+btnH);
-        onGr.addColorStop(0, '#1E88E5'); onGr.addColorStop(1, '#1565C0');
-        this._rr(c, onX, onY, btnW, btnH, 10); c.fillStyle = onGr; c.fill();
-        c.strokeStyle = '#42A5F5'; c.lineWidth = 2;
-        this._rr(c, onX, onY, btnW, btnH, 10); c.stroke();
-        c.fillStyle = '#FFFFFF'; c.font = 'bold 14px "Segoe UI", sans-serif';
-        c.fillText('\u{1F310} Online', onX + btnW/2, onY + btnH/2);
-        // Online badge
-        c.fillStyle = '#4CAF50'; c.font = 'bold 9px "Segoe UI", sans-serif';
-        c.fillText('LIVE', onX + btnW - 18, onY + 12);
+        c.fillText('\u25B6 Start', offX + btnW/2, offY + btnH/2);
+        this.g.btns.push({
+            label: 'Start',
+            rect: this.g._offlineBtnRect,
+            fn: () => {
+                this.g._gameMode = 'offline';
+                this.g.state = 'modeSelect';
+                this.g.sfx.click();
+            }
+        });
 
         // How to Play button
-        const hpX = startX + (btnW + btnGap) * 2, hpY = btnY;
+        const hpX = startX + btnW + btnGap, hpY = btnY;
         this.g._helpBtnRect = { x: hpX, y: hpY, w: btnW, h: btnH };
         const hpGr = c.createLinearGradient(hpX, hpY, hpX, hpY+btnH);
         hpGr.addColorStop(0, 'rgba(33,150,243,0.3)'); hpGr.addColorStop(1, 'rgba(33,150,243,0.15)');
@@ -1379,6 +1393,13 @@ export class Renderer {
         this._rr(c, hpX, hpY, btnW, btnH, 10); c.stroke();
         c.fillStyle = '#1565C0'; c.font = 'bold 14px "Segoe UI", sans-serif';
         c.fillText('\u{1F4D6} How to Play', hpX + btnW/2, hpY + btnH/2);
+        this.g.btns.push({
+            label: 'How to Play',
+            rect: this.g._helpBtnRect,
+            fn: () => {
+                this.g.showHelp();
+            }
+        });
 
         // Continue button (if save exists)
         const hasSave = !!localStorage.getItem('emperorsConquest_save');
@@ -1394,6 +1415,15 @@ export class Renderer {
             c.fillStyle = '#FFFFFF'; c.font = 'bold 14px "Segoe UI", sans-serif';
             c.textAlign = 'center'; c.textBaseline = 'middle';
             c.fillText('\u25B6 Continue Save', ctX + ctW/2, ctY + ctH/2);
+            this.g.btns.push({
+                label: 'Continue Save',
+                rect: this.g._continueBtnRect,
+                fn: () => {
+                    if (!this.g.loadGame()) {
+                        this.g._log('No saved game found!');
+                    }
+                }
+            });
         }
 
         // Pulsing hint
@@ -1401,7 +1431,7 @@ export class Renderer {
             c.fillStyle = '#E65100'; c.font = 'bold 16px Georgia, serif';
             c.textAlign = 'center';
             c.shadowColor = 'rgba(230,81,0,0.3)'; c.shadowBlur = 8;
-            c.fillText('Choose Offline or Online to begin', W/2, H*0.95);
+            c.fillText('Choose Start to begin', W/2, H*0.95);
             c.shadowColor = 'transparent'; c.shadowBlur = 0;
         }
     }
@@ -1594,7 +1624,6 @@ export class Renderer {
         c.closePath(); c.fill();
 
         // ── BACK BUTTON ──
-        g.btns = [];
         const bbW = 80, bbH = 30, bbX = 15, bbY = 15;
         const backBtn = { label: 'Back', fn: () => { g.state = 'difficulty'; g.sfx.click(); } };
         backBtn.rect = { x: bbX, y: bbY, w: bbW, h: bbH };
@@ -1731,6 +1760,10 @@ export class Renderer {
                 c.fillStyle = em.color; c.font = 'bold 9px Georgia, serif';
                 c.fillText('\u2694 Click to Command \u2694', tipX + tipW / 2, tipY + tipH - 6);
             }
+            // Register empire card as proper button for click detection
+            const cardBtn = { label: eid, fn: () => { g._startGame(eid); g.sfx.click(); } };
+            cardBtn.rect = { x, y, w: cw, h: ch };
+            g.btns.push(cardBtn);
         }
 
         this._empSelHover = curHover;
@@ -1742,6 +1775,176 @@ export class Renderer {
         c.fillStyle = '#ffd700'; c.font = 'bold 14px Georgia, serif';
         c.textAlign = 'center';
         c.fillText('Hover over an emperor to learn their story. Click to begin your conquest.', W / 2, H - 18);
+        c.restore();
+    }
+
+    // ── MODE SELECT ────────────────────────────────────────────
+    _modeSelect() {
+        const c = this.ctx, { W, H } = this.g;
+        const g = this.g;
+
+        // Dark atmospheric background
+        const bgGr = c.createRadialGradient(W/2, H/2, 50, W/2, H/2, W*0.8);
+        bgGr.addColorStop(0, '#1a0f08'); bgGr.addColorStop(1, '#080402');
+        c.fillStyle = bgGr; c.fillRect(0, 0, W, H);
+
+        // Floating particles
+        for (let i = 0; i < 30; i++) {
+            const px = (Math.sin(this.time * 0.004 + i * 3.1) * 0.5 + 0.5) * W;
+            const py = H - ((this.time * 0.2 + i * 53) % H);
+            const sz = 1 + Math.sin(this.time * 0.015 + i) * 0.6;
+            const alpha = 0.08 + Math.sin(this.time * 0.008 + i * 0.9) * 0.06;
+            c.fillStyle = `rgba(255,180,50,${alpha})`;
+            c.beginPath(); c.arc(px, py, sz, 0, Math.PI * 2); c.fill();
+        }
+
+        c.textAlign = 'center'; c.textBaseline = 'middle';
+
+        // Title glow
+        const titleGlow = 12 + Math.sin(this.time * 0.03) * 6;
+        c.save();
+        c.shadowColor = 'rgba(255,215,0,0.6)'; c.shadowBlur = titleGlow;
+        c.fillStyle = '#ffd700'; c.font = 'bold 38px Georgia, serif';
+        c.fillText('CHOOSE YOUR CONQUEST', W/2, H*0.12);
+        c.restore();
+
+        c.fillStyle = '#b89a6a'; c.font = 'italic 14px Georgia, serif';
+        c.fillText('Select a game mode to begin your journey', W/2, H*0.12 + 36);
+
+        // Gold divider
+        const divY = H * 0.22;
+        c.strokeStyle = 'rgba(184,154,106,0.4)'; c.lineWidth = 1;
+        c.beginPath(); c.moveTo(W*0.2, divY); c.lineTo(W*0.8, divY); c.stroke();
+
+        // Two mode cards
+        const modes = [
+            {
+                label: 'Classic Empire',
+                icon: '\u2694\uFE0F',
+                color: '#D32F2F',
+                border: '#EF5350',
+                desc: '15 Historical Empires',
+                detail: 'Command Rome, Mongol, Ottoman and more across 30 territories',
+                count: '15 Empires \u00B7 30 Territories \u00B7 3000 Years',
+                mode: 'classic',
+            },
+            {
+                label: 'World Conquest',
+                icon: '\uD83C\uDF0D',
+                color: '#1E88E5',
+                border: '#42A5F5',
+                desc: '195 Modern Countries',
+                detail: 'Lead any nation in a global struggle for world domination',
+                count: '195 Countries \u00B7 All Continents \u00B7 Modern Era',
+                mode: 'worldConquest',
+            },
+        ];
+
+        const btnW = 280, btnH = 240, gap = 40;
+        const totalW = btnW * 2 + gap;
+        const startX = (W - totalW) / 2;
+        const startY = H * 0.28;
+
+        for (let i = 0; i < modes.length; i++) {
+            const m = modes[i];
+            const bx = startX + i * (btnW + gap);
+            const by = startY;
+            const hover = g.input.hoverX >= bx && g.input.hoverX <= bx + btnW &&
+                          g.input.hoverY >= by && g.input.hoverY <= by + btnH;
+
+            // Card shadow
+            c.save();
+            c.shadowColor = 'rgba(0,0,0,0.5)'; c.shadowBlur = hover ? 20 : 8;
+            c.shadowOffsetY = hover ? 4 : 2;
+
+            // Card background
+            const cardGr = c.createLinearGradient(bx, by, bx, by + btnH);
+            cardGr.addColorStop(0, hover ? 'rgba(60,35,20,0.97)' : 'rgba(40,24,14,0.92)');
+            cardGr.addColorStop(1, hover ? 'rgba(50,28,16,0.97)' : 'rgba(30,18,10,0.92)');
+            this._rr(c, bx, by, btnW, btnH, 16); c.fillStyle = cardGr; c.fill();
+            c.restore();
+
+            // Top color bar
+            c.fillStyle = m.color;
+            c.save();
+            c.beginPath();
+            c.moveTo(bx + 16, by);
+            c.lineTo(bx + btnW - 16, by);
+            c.arcTo(bx + btnW, by, bx + btnW, by + 16, 16);
+            c.lineTo(bx + btnW, by + 8);
+            c.lineTo(bx, by + 8);
+            c.lineTo(bx, by + 16);
+            c.arcTo(bx, by, bx + 16, by, 16);
+            c.closePath();
+            c.fill();
+            c.restore();
+
+            // Border
+            c.strokeStyle = hover ? '#ffd700' : m.color + '80';
+            c.lineWidth = hover ? 2.5 : 1.5;
+            this._rr(c, bx, by, btnW, btnH, 16); c.stroke();
+
+            // Hover glow
+            if (hover) {
+                const glowPulse = 8 + Math.sin(this.time * 0.06) * 4;
+                c.save();
+                c.shadowColor = m.color; c.shadowBlur = glowPulse;
+                this._rr(c, bx, by, btnW, btnH, 16); c.stroke();
+                c.restore();
+            }
+
+            // Icon
+            c.font = '52px serif'; c.fillStyle = m.color;
+            c.fillText(m.icon, bx + btnW/2, by + 55);
+
+            // Label
+            c.font = 'bold 22px Georgia, serif'; c.fillStyle = '#ffd700';
+            c.fillText(m.label, bx + btnW/2, by + 100);
+
+            // Description
+            c.font = '13px "Segoe UI", sans-serif'; c.fillStyle = '#e0d0b8';
+            c.fillText(m.desc, bx + btnW/2, by + 128);
+
+            // Detail
+            c.font = '11px "Segoe UI", sans-serif'; c.fillStyle = '#c0b098';
+            c.fillText(m.detail, bx + btnW/2, by + 150);
+
+            // Count badge
+            c.font = '10px "Segoe UI", sans-serif'; c.fillStyle = m.color + 'cc';
+            c.fillText(m.count, bx + btnW/2, by + 175);
+
+            // Register button
+            const btn = { label: m.mode, fn: () => {
+                g._gameModeType = m.mode;
+                if (m.mode === 'classic') {
+                    g.state = 'difficulty';
+                } else {
+                    g.state = 'difficulty';
+                }
+                g.sfx.click();
+            }};
+            btn.rect = { x: bx, y: by, w: btnW, h: btnH };
+            g.btns.push(btn);
+        }
+
+        // Back button
+        const bbW = 80, bbH = 30, bbX = 15, bbY = 15;
+        const backBtn = { label: 'Back', fn: () => { g.state = 'menu'; g.sfx.click(); } };
+        backBtn.rect = { x: bbX, y: bbY, w: bbW, h: bbH };
+        g.btns.push(backBtn);
+        this._rr(c, bbX, bbY, bbW, bbH, 8); c.fillStyle = 'rgba(184,154,106,0.15)'; c.fill();
+        c.strokeStyle = '#b7950b'; c.lineWidth = 1.5;
+        this._rr(c, bbX, bbY, bbW, bbH, 8); c.stroke();
+        c.fillStyle = '#f5e6c8'; c.font = 'bold 12px "Segoe UI", sans-serif';
+        c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillText('\u2B05 Back', bbX + bbW / 2, bbY + bbH / 2);
+
+        // Bottom pulse hint
+        const pulse = 0.5 + Math.sin(this.time * 0.04) * 0.3;
+        c.save(); c.globalAlpha = pulse;
+        c.fillStyle = '#ffd700'; c.font = 'bold 14px Georgia, serif';
+        c.textAlign = 'center';
+        c.fillText('Select a game mode to continue', W/2, H - 20);
         c.restore();
     }
 
@@ -2291,7 +2494,7 @@ export class Renderer {
             const diffKey = d.label.toLowerCase();
             const btn = { label: d.label, fn: () => {
                 g.difficulty = diffKey;
-                g.state = 'empireSelect';
+                g.state = (g._gameModeType === 'worldConquest') ? 'countrySelect' : 'empireSelect';
                 g.sfx.click();
             }};
             btn.rect = { x: bx, y: by, w: btnW, h: btnH };
@@ -2300,7 +2503,7 @@ export class Renderer {
 
         // Back button
         const bbW = 80, bbH = 30, bbX = 15, bbY = 15;
-        const backBtn = { label: 'Back', fn: () => { g.state = 'menu'; g.sfx.click(); } };
+        const backBtn = { label: 'Back', fn: () => { g.state = (g._gameModeType === 'worldConquest') ? 'modeSelect' : 'menu'; g.sfx.click(); } };
         backBtn.rect = { x: bbX, y: bbY, w: bbW, h: bbH };
         g.btns.push(backBtn);
         this._rr(c, bbX, bbY, bbW, bbH, 8); c.fillStyle = 'rgba(184,154,106,0.15)'; c.fill();
@@ -4155,34 +4358,12 @@ export class Renderer {
             for (const poly of polys) {
                 c.beginPath();
                 this._smoothPolyPath(c, poly, 0.25);
-                if (em) {
-                    // Semi-transparent empire fill (0.6 opacity) over parchment
-                    c.save();
-                    c.globalAlpha = 0.6;
-                    c.fillStyle = em.color;
-                    c.fill();
-                    c.restore();
-                } else {
-                    // Neutral territory — subtle terrain tint at 0.5 opacity
-                    const terrainFills = {
-                        forest:    '#3a6a3a',
-                        mountains: '#7a6a5a',
-                        desert:    '#c8a855',
-                        plains:    '#6a8a4a',
-                        island:    '#5a7a8a',
-                        coast:     '#5a8a7a',
-                        peninsula: '#9a8a6a',
-                    };
-                    c.save();
-                    c.globalAlpha = 0.5;
-                    c.fillStyle = terrainFills[t.terrain] || '#7a7a6a';
-                    c.fill();
-                    c.restore();
-                }
-                // ── Ancient map-style dark brown border ──
-                c.strokeStyle = '#3a2510';
-                c.lineWidth = 1.8;
+                
+                // ── Subtle border ──
+                c.strokeStyle = 'rgba(90, 58, 26, 0.18)';
+                c.lineWidth = 1.2;
                 c.stroke();
+
                 // Selection/hover highlight — warm gold outline
                 if (isSel) {
                     c.strokeStyle = '#c49a30';
@@ -4234,10 +4415,6 @@ export class Renderer {
                     c.restore();
                 }
                 if (isHov && isOwn && !isSel) {
-                    const pulse = 0.15 + Math.sin(this.time * 0.08) * 0.1;
-                    drawTPoly();
-                    c.fillStyle = `rgba(255,215,0,${pulse})`;
-                    c.fill();
                     drawTPoly();
                     c.strokeStyle = '#ffd700';
                     c.lineWidth = 2.5 * this.scale;
@@ -4491,8 +4668,10 @@ export class Renderer {
     }
 
     _weaponTier(weapon) {
+        if (!weapon) return 0;
+        const name = typeof weapon === 'string' ? weapon : weapon.name;
         for (const [tier, weapons] of Object.entries(WEAPONS)) {
-            if (weapons.includes(weapon)) return parseInt(tier);
+            if (weapons.some(w => w.name === name)) return parseInt(tier);
         }
         return 0;
     }
@@ -5167,23 +5346,6 @@ export class Renderer {
     c.fillStyle = '#f5e6c8'; c.font = 'bold 13px "Segoe UI", sans-serif';
     c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillText(soundLabel, hudSoundBtnX + soundW / 2, smBtnY + smBtnH / 2);
-
-    // Switch Mode button (toggle online/offline)
-    const switchLabel = g._gameMode === 'online' ? '\u{1F310} Online' : '\u{1F3DB} Offline';
-    const switchColor = g._gameMode === 'online' ? [30, 136, 229] : [198, 40, 40];
-    const switchW = Math.max(smBtnMinW, c.measureText(switchLabel).width + 28);
-    const hudSwitchBtnX = hudSoundBtnX - smBtnGap - switchW;
-    const hudSwitchBtn = { label: 'switchMode', fn: () => {
-        g._gameMode = g._gameMode === 'online' ? 'offline' : 'online';
-        g.sfx.click();
-        g._log('Switched to ' + g._gameMode.toUpperCase() + ' mode');
-    }};
-    hudSwitchBtn.rect = { x: hudSwitchBtnX, y: smBtnY, w: switchW, h: smBtnH };
-    g.btns.push(hudSwitchBtn);
-    draw3DBtn(hudSwitchBtnX, smBtnY, switchW, smBtnH, switchColor[0], switchColor[1], switchColor[2], true);
-    c.fillStyle = '#f5e6c8'; c.font = 'bold 13px "Segoe UI", sans-serif';
-    c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillText(switchLabel, hudSwitchBtnX + switchW / 2, smBtnY + smBtnH / 2);
 
         // ── Action buttons (48px tall, min 120px wide, 3D raised) ──
         const btnH = 48, btnGap = 8, btnMinW = 120, btnFont = 'bold 16px "Segoe UI", sans-serif';
@@ -6596,6 +6758,14 @@ export class Renderer {
         c.fillText('\u2B05 BACK', backX + backW/2, backY + backH/2);
         g.btns.push({ rect: { x: backX, y: backY, w: backW, h: backH }, fn: () => { g._exitTerritoryView(); g.sfx.click(); } });
 
+        // Scroll hint (only when no sub-view overlay)
+        if (!tv.sub) {
+            c.font = '10px "Segoe UI", sans-serif';
+            c.textAlign = 'center'; c.textBaseline = 'bottom';
+            c.fillStyle = 'rgba(255,255,255,0.4)';
+            c.fillText('🎮 WASD / Arrow keys to explore', W / 2, H - 70);
+        }
+
         // Territory name + empire (after back button)
         c.textAlign = 'left'; c.textBaseline = 'middle';
         c.fillStyle = '#ffd700'; c.font = 'bold 18px Georgia, serif';
@@ -6688,6 +6858,8 @@ export class Renderer {
         const terrain = t.terrain || 'plains';
         const time = tv.time;
         const horizon = H * 0.38;
+        const scrollX = tv.scrollX || 0;
+        const scrollY = tv.scrollY || 0;
         let skyTop, skyBot, groundFar, groundNear, groundMid;
         let fogColor = 'rgba(180,170,150,0.15)';
 
@@ -6730,42 +6902,278 @@ export class Renderer {
         skyGr.addColorStop(0, skyTop); skyGr.addColorStop(1, skyBot);
         c.fillStyle = skyGr; c.fillRect(0, 0, W, horizon);
 
+        // ── Day/Night Cycle ──
+        const timeOfDay = (tv.time % 600) / 600; // 0-1 cycle
+        const dayPhase = timeOfDay < 0.25 ? 'dawn' : timeOfDay < 0.5 ? 'day' : timeOfDay < 0.75 ? 'dusk' : 'night';
+        // Phase transitions: dawn(0-0.25), day(0.25-0.5), dusk(0.5-0.75), night(0.75-1.0)
+        let dayTint, dayTintAlpha, sunAlpha = 0, nightOverlay = 0;
+        if (dayPhase === 'dawn') {
+            const p = (timeOfDay - 0) / 0.25; // 0-1 within dawn
+            dayTintAlpha = 0.15 * (1 - Math.abs(p - 0.5) * 2); // peaks mid-dawn
+            dayTint = `rgba(255,${140 + p * 40},${60 + p * 30},${dayTintAlpha})`;
+            sunAlpha = p * 0.6;
+            nightOverlay = (1 - p) * 0.25;
+        } else if (dayPhase === 'day') {
+            const p = (timeOfDay - 0.25) / 0.25;
+            sunAlpha = 0.5 + Math.sin(p * Math.PI) * 0.3; // arc of brightness
+            nightOverlay = 0;
+            dayTint = 'rgba(255,255,200,0.04)';
+        } else if (dayPhase === 'dusk') {
+            const p = (timeOfDay - 0.5) / 0.25;
+            dayTintAlpha = 0.18 * (1 - Math.abs(p - 0.5) * 2);
+            dayTint = `rgba(255,${100 - p * 30},${40 - p * 20},${dayTintAlpha})`;
+            sunAlpha = (1 - p) * 0.5;
+            nightOverlay = p * 0.3;
+        } else { // night
+            nightOverlay = 0.35;
+            sunAlpha = 0;
+            dayTint = 'rgba(20,30,80,0)';
+        }
+        // Apply sky tint
+        if (dayTint && dayTintAlpha > 0.01) {
+            c.fillStyle = dayTint;
+            c.fillRect(0, 0, W, horizon);
+        }
+        // Night overlay on sky
+        if (nightOverlay > 0.01) {
+            c.fillStyle = `rgba(10,15,40,${nightOverlay})`;
+            c.fillRect(0, 0, W, horizon);
+        }
+
         // Stars with twinkling
-        c.fillStyle = 'rgba(255,255,200,0.5)';
+        const starBaseAlpha = dayPhase === 'night' ? 0.7 : dayPhase === 'dusk' ? 0.2 : dayPhase === 'dawn' ? 0.15 : 0.05;
+        c.fillStyle = 'rgba(255,255,200,1)';
         for (let i = 0; i < 40; i++) {
             const sx = (Math.sin(i * 47.3) * 0.5 + 0.5) * W;
             const sy = (Math.cos(i * 31.7) * 0.5 + 0.5) * horizon * 0.8;
             const twinkle = 0.3 + Math.sin(time * 0.03 + i * 2) * 0.3;
-            c.globalAlpha = twinkle;
+            c.globalAlpha = twinkle * starBaseAlpha;
             c.beginPath(); c.arc(sx, sy, 1 + Math.sin(i) * 0.5, 0, Math.PI * 2); c.fill();
         }
         c.globalAlpha = 1;
 
         // Moon with glow
-        const moonX = W * 0.82, moonY = H * 0.10;
-        const moonGlow = c.createRadialGradient(moonX, moonY, 10, moonX, moonY, 60);
-        moonGlow.addColorStop(0, 'rgba(255,250,220,0.25)'); moonGlow.addColorStop(1, 'rgba(255,250,220,0)');
-        c.fillStyle = moonGlow; c.fillRect(moonX - 60, moonY - 60, 120, 120);
-        c.fillStyle = 'rgba(255,250,220,0.8)'; c.beginPath(); c.arc(moonX, moonY, 18, 0, Math.PI * 2); c.fill();
-        c.fillStyle = skyTop; c.beginPath(); c.arc(moonX + 6, moonY - 4, 15, 0, Math.PI * 2); c.fill();
+        const moonVis = dayPhase === 'night' ? 0.9 : dayPhase === 'dusk' ? 0.4 : dayPhase === 'dawn' ? 0.3 : 0.05;
+        if (moonVis > 0.05) {
+            const moonX = W * 0.82, moonY = H * 0.10;
+            const moonGlow = c.createRadialGradient(moonX, moonY, 10, moonX, moonY, 60);
+            moonGlow.addColorStop(0, `rgba(255,250,220,${0.25 * moonVis})`); moonGlow.addColorStop(1, 'rgba(255,250,220,0)');
+            c.fillStyle = moonGlow; c.fillRect(moonX - 60, moonY - 60, 120, 120);
+            c.fillStyle = `rgba(255,250,220,${0.8 * moonVis})`; c.beginPath(); c.arc(moonX, moonY, 18, 0, Math.PI * 2); c.fill();
+            c.fillStyle = skyTop; c.beginPath(); c.arc(moonX + 6, moonY - 4, 15, 0, Math.PI * 2); c.fill();
+        }
+
+        // Sun during day/dawn/dusk
+        if (sunAlpha > 0.05) {
+            const sunAngle = timeOfDay * Math.PI; // arc across sky
+            const sunX = W * (0.15 + timeOfDay * 0.7);
+            const sunY = H * 0.25 - Math.sin(sunAngle) * H * 0.15;
+            const sunGlow = c.createRadialGradient(sunX, sunY, 5, sunX, sunY, 50);
+            sunGlow.addColorStop(0, `rgba(255,230,100,${sunAlpha})`); sunGlow.addColorStop(1, 'rgba(255,200,50,0)');
+            c.fillStyle = sunGlow; c.fillRect(sunX - 50, sunY - 50, 100, 100);
+            c.fillStyle = `rgba(255,240,180,${sunAlpha})`; c.beginPath(); c.arc(sunX, sunY, 12, 0, Math.PI * 2); c.fill();
+        }
+
+        // ── Animated Clouds ──
+        const cloudAlpha = dayPhase === 'night' ? 0.15 : dayPhase === 'dusk' ? 0.35 : dayPhase === 'dawn' ? 0.3 : 0.55;
+        if (cloudAlpha > 0.05) {
+            const _cseed = tv.tid * 73;
+            const _crng = (n) => { let x = Math.sin(_cseed + n) * 43758.5453; return x - Math.floor(x); };
+            for (let ci = 0; ci < 5; ci++) {
+                const baseX = _crng(ci * 13.7) * W * 1.5 - W * 0.25;
+                const cx = ((baseX + time * (0.08 + ci * 0.03)) % (W + 200)) - 100;
+                const cy = horizon * (0.15 + _crng(ci * 7.3) * 0.45);
+                const cScale = 0.6 + _crng(ci * 5.1) * 0.8;
+                // Cloud shadow (slightly offset)
+                c.fillStyle = `rgba(80,80,90,${cloudAlpha * 0.3})`;
+                for (let p = 0; p < 5; p++) {
+                    const px = cx + Math.sin(p * 1.3 + ci) * 18 * cScale + 3;
+                    const py = cy + Math.cos(p * 1.7 + ci) * 6 * cScale + 3;
+                    const pr = (12 + Math.sin(p * 2.1 + ci) * 6) * cScale;
+                    c.beginPath(); c.arc(px, py, pr, 0, Math.PI * 2); c.fill();
+                }
+                // Cloud body (white, semi-transparent)
+                c.fillStyle = `rgba(255,255,255,${cloudAlpha})`;
+                for (let p = 0; p < 6; p++) {
+                    const px = cx + Math.sin(p * 1.3 + ci) * 18 * cScale;
+                    const py = cy + Math.cos(p * 1.7 + ci) * 6 * cScale;
+                    const pr = (12 + Math.sin(p * 2.1 + ci) * 6) * cScale;
+                    c.beginPath(); c.arc(px, py, pr, 0, Math.PI * 2); c.fill();
+                }
+            }
+        }
 
         // ── 3D Perspective Ground ──
         // Draw ground with converging lines for depth
-        const vpX = W * 0.5, vpY = horizon; // vanishing point
+        const vpX = W * 0.5 + scrollX * 0.3; // Shift vanishing point with scroll for parallax
+        const vpY = horizon + scrollY * 0.2; // Shift horizon slightly with vertical scroll
         const groundGr = c.createLinearGradient(0, horizon, 0, H);
         groundGr.addColorStop(0, groundFar); groundGr.addColorStop(0.5, groundMid); groundGr.addColorStop(1, groundNear);
         c.fillStyle = groundGr; c.fillRect(0, horizon, W, H - horizon);
 
+        // Day/night ground tint
+        if (dayPhase === 'dawn' || dayPhase === 'dusk') {
+            c.fillStyle = `rgba(255,${dayPhase === 'dawn' ? 180 : 140},${dayPhase === 'dawn' ? 100 : 60},0.06)`;
+            c.fillRect(0, horizon, W, H - horizon);
+        } else if (dayPhase === 'night') {
+            c.fillStyle = 'rgba(10,15,40,0.25)';
+            c.fillRect(0, horizon, W, H - horizon);
+        }
+
         // Perspective grid lines (road/field lines going to vanishing point)
+        // Extend range and offset by scrollX for infinite scroll feel
         c.strokeStyle = 'rgba(0,0,0,0.06)'; c.lineWidth = 1;
-        for (let i = -5; i <= 5; i++) {
+        for (let i = -8; i <= 8; i++) {
             const bx = vpX + i * 120;
             c.beginPath(); c.moveTo(vpX, vpY); c.lineTo(bx, H); c.stroke();
         }
-        // Horizontal depth lines
+        // Horizontal depth lines (offset by scrollY)
         for (let i = 1; i <= 6; i++) {
-            const ly = horizon + (H - horizon) * (i / 6) * (i / 6);
+            const ly = horizon + (H - horizon) * (i / 6) * (i / 6) + scrollY * 0.15;
             c.beginPath(); c.moveTo(0, ly); c.lineTo(W, ly); c.stroke();
+        }
+
+        // ── Enhanced ground textures by terrain type ──
+        // Terrain-specific ground texture overlay
+        const _seed = tv.tid * 137; // deterministic seed per territory
+        const _rng = (n) => { let x = Math.sin(_seed + n) * 43758.5453; return x - Math.floor(x); };
+        if (terrain === 'plains') {
+            // Dirt patches
+            for (let i = 0; i < 25; i++) {
+                const px = _rng(i * 7.1) * W;
+                const depth = _rng(i * 3.3) * 0.7 + 0.15;
+                const py = horizon + (H - horizon) * depth;
+                const pr = 8 + _rng(i * 5.7) * 15 * depth;
+                c.fillStyle = `rgba(139,119,80,${0.15 + depth * 0.15})`;
+                c.beginPath(); c.ellipse(px + scrollX * depth * 0.5, py + scrollY * depth * 0.2, pr, pr * 0.4, 0, 0, Math.PI * 2); c.fill();
+            }
+            // Tiny wildflowers
+            for (let i = 0; i < 35; i++) {
+                const px = _rng(i * 11.3 + 50) * W;
+                const depth = _rng(i * 4.1 + 50) * 0.8 + 0.1;
+                const py = horizon + (H - horizon) * depth;
+                const colors = ['#e04040','#f0e050','#e080d0','#ffffff','#80b0ff'];
+                c.fillStyle = colors[i % colors.length];
+                c.globalAlpha = 0.4 + depth * 0.3;
+                c.beginPath(); c.arc(px + scrollX * depth * 0.5, py + scrollY * depth * 0.2, 1.5 + depth * 2, 0, Math.PI * 2); c.fill();
+            }
+            c.globalAlpha = 1;
+        } else if (terrain === 'forest') {
+            // Dark soil patches
+            for (let i = 0; i < 20; i++) {
+                const px = _rng(i * 6.2) * W;
+                const depth = _rng(i * 2.8) * 0.6 + 0.2;
+                const py = horizon + (H - horizon) * depth;
+                const pr = 10 + _rng(i * 4.4) * 18;
+                c.fillStyle = `rgba(40,30,15,${0.12 + depth * 0.12})`;
+                c.beginPath(); c.ellipse(px + scrollX * depth * 0.5, py + scrollY * depth * 0.2, pr, pr * 0.35, 0, 0, Math.PI * 2); c.fill();
+            }
+            // Fallen leaves
+            for (let i = 0; i < 40; i++) {
+                const px = _rng(i * 9.7 + 200) * W;
+                const depth = _rng(i * 3.2 + 200) * 0.75 + 0.1;
+                const py = horizon + (H - horizon) * depth;
+                const leafColors = ['#8B4513','#a0522d','#6b8e23','#556b2f'];
+                c.fillStyle = leafColors[i % leafColors.length];
+                c.globalAlpha = 0.3 + depth * 0.2;
+                c.beginPath(); c.ellipse(px + scrollX * depth * 0.5, py + scrollY * depth * 0.2, 3 + depth * 3, 2 + depth * 1.5, _rng(i) * Math.PI, 0, Math.PI * 2); c.fill();
+            }
+            c.globalAlpha = 1;
+        } else if (terrain === 'desert') {
+            // Sand ripple patterns
+            for (let i = 0; i < 18; i++) {
+                const px = _rng(i * 8.5) * W;
+                const depth = _rng(i * 3.1) * 0.7 + 0.15;
+                const py = horizon + (H - horizon) * depth;
+                c.strokeStyle = `rgba(180,150,90,${0.1 + depth * 0.1})`;
+                c.lineWidth = 1;
+                c.beginPath();
+                const rw = 30 + depth * 40;
+                for (let j = 0; j < rw; j += 3) {
+                    const ry = Math.sin((px + j + scrollX * depth * 0.3) * 0.1) * 3 * depth;
+                    if (j === 0) c.moveTo(px + j + scrollX * depth * 0.5, py + ry);
+                    else c.lineTo(px + j + scrollX * depth * 0.5, py + ry);
+                }
+                c.stroke();
+            }
+            // Small rocks/pebbles
+            for (let i = 0; i < 30; i++) {
+                const px = _rng(i * 12.1 + 100) * W;
+                const depth = _rng(i * 4.3 + 100) * 0.8 + 0.1;
+                const py = horizon + (H - horizon) * depth;
+                c.fillStyle = `rgba(120,100,70,${0.2 + depth * 0.15})`;
+                c.beginPath(); c.ellipse(px + scrollX * depth * 0.5, py + scrollY * depth * 0.2, 2 + depth * 3, 1.5 + depth * 2, 0, 0, Math.PI * 2); c.fill();
+            }
+        } else if (terrain === 'mountains') {
+            // Rocky ground patches
+            for (let i = 0; i < 22; i++) {
+                const px = _rng(i * 7.7) * W;
+                const depth = _rng(i * 2.9) * 0.65 + 0.2;
+                const py = horizon + (H - horizon) * depth;
+                const pr = 6 + _rng(i * 5.1) * 12;
+                c.fillStyle = `rgba(90,80,65,${0.15 + depth * 0.12})`;
+                c.beginPath(); c.ellipse(px + scrollX * depth * 0.5, py + scrollY * depth * 0.2, pr, pr * 0.3, 0.3, 0, Math.PI * 2); c.fill();
+            }
+            // Snow specks near horizon
+            for (let i = 0; i < 15; i++) {
+                const px = _rng(i * 6.3 + 300) * W;
+                const depth = _rng(i * 2.1 + 300) * 0.3 + 0.05;
+                const py = horizon + (H - horizon) * depth;
+                c.fillStyle = `rgba(230,235,240,${0.2 + depth * 0.15})`;
+                c.beginPath(); c.arc(px + scrollX * depth * 0.5, py, 2 + depth * 4, 0, Math.PI * 2); c.fill();
+            }
+        } else if (terrain === 'coast') {
+            // Sandy beach with wave patterns approaching water
+            for (let i = 0; i < 12; i++) {
+                const wy = horizon + (H - horizon) * (0.3 + i * 0.06);
+                const waveAlpha = 0.06 + (1 - i / 12) * 0.08;
+                c.strokeStyle = `rgba(58,124,165,${waveAlpha})`;
+                c.lineWidth = 1.5;
+                c.beginPath();
+                for (let x = 0; x < W; x += 4) {
+                    const yOff = Math.sin((x + time * 0.5 + scrollX * 0.2) * 0.03 + i) * 4;
+                    if (x === 0) c.moveTo(x, wy + yOff);
+                    else c.lineTo(x, wy + yOff);
+                }
+                c.stroke();
+            }
+        } else if (terrain === 'island') {
+            // Sandy shore patches
+            for (let i = 0; i < 18; i++) {
+                const px = _rng(i * 8.9) * W;
+                const depth = _rng(i * 3.6) * 0.5 + 0.25;
+                const py = horizon + (H - horizon) * depth;
+                const pr = 10 + _rng(i * 5.3) * 20;
+                c.fillStyle = `rgba(210,180,140,${0.12 + depth * 0.1})`;
+                c.beginPath(); c.ellipse(px + scrollX * depth * 0.5, py + scrollY * depth * 0.2, pr, pr * 0.35, 0, 0, Math.PI * 2); c.fill();
+            }
+            // Tropical flowers
+            for (let i = 0; i < 20; i++) {
+                const px = _rng(i * 10.2 + 500) * W;
+                const depth = _rng(i * 3.8 + 500) * 0.7 + 0.15;
+                const py = horizon + (H - horizon) * depth;
+                const fColors = ['#ff69b4','#ff1493','#ffa500','#ff6347','#ffff00'];
+                c.fillStyle = fColors[i % fColors.length];
+                c.globalAlpha = 0.35 + depth * 0.25;
+                c.beginPath(); c.arc(px + scrollX * depth * 0.5, py + scrollY * depth * 0.2, 2 + depth * 2.5, 0, Math.PI * 2); c.fill();
+            }
+            c.globalAlpha = 1;
+        } else if (terrain === 'peninsula') {
+            // Rocky shore terrain
+            for (let i = 0; i < 15; i++) {
+                const px = _rng(i * 7.3 + 400) * W;
+                const depth = _rng(i * 3.1 + 400) * 0.7 + 0.15;
+                const py = horizon + (H - horizon) * depth;
+                c.fillStyle = `rgba(110,95,75,${0.15 + depth * 0.1})`;
+                c.beginPath(); c.ellipse(px + scrollX * depth * 0.5, py + scrollY * depth * 0.2, 8 + depth * 12, 5 + depth * 6, 0, 0, Math.PI * 2); c.fill();
+            }
+        }
+        // Subtle horizontal color banding for depth variation
+        for (let i = 0; i < 8; i++) {
+            const bandY = horizon + (H - horizon) * (i / 8);
+            const bandH = (H - horizon) / 8;
+            c.fillStyle = i % 2 === 0 ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.015)';
+            c.fillRect(0, bandY, W, bandH);
         }
 
         // ── Horizon atmospheric fog ──
@@ -6773,12 +7181,62 @@ export class Renderer {
         fogGr.addColorStop(0, fogColor); fogGr.addColorStop(1, 'rgba(0,0,0,0)');
         c.fillStyle = fogGr; c.fillRect(0, horizon - 20, W, 60);
 
-        // ── Terrain-specific 3D decorations ──
-        if (terrain === 'desert') this._drawDesertDecor3D(c, W, H, horizon, time);
-        else if (terrain === 'mountains') this._drawMountainDecor3D(c, W, H, horizon, time);
-        else if (terrain === 'coast' || terrain === 'island') this._drawCoastDecor3D(c, W, H, horizon, time);
-        else if (terrain === 'forest') this._drawForestDecor3D(c, W, H, horizon, time);
-        else this._drawPlainsDecor3D(c, W, H, horizon, time);
+        // ── Animated Water Features (coast & island) ──
+        if (terrain === 'coast' || terrain === 'island') {
+            const waterTop = horizon + (H - horizon) * 0.08;
+            const waterBot = horizon + (H - horizon) * 0.32;
+            // Water body gradient
+            const waterGr = c.createLinearGradient(0, waterTop, 0, waterBot);
+            waterGr.addColorStop(0, 'rgba(42,100,140,0.45)');
+            waterGr.addColorStop(0.5, 'rgba(58,124,165,0.5)');
+            waterGr.addColorStop(1, 'rgba(80,160,200,0.35)');
+            c.fillStyle = waterGr;
+            // Wavy water edge
+            c.beginPath(); c.moveTo(0, waterTop);
+            for (let x = 0; x <= W; x += 6) {
+                const wy = waterTop + Math.sin((x + time * 0.4 + scrollX * 0.15) * 0.025) * 5
+                    + Math.sin((x + time * 0.7) * 0.04) * 2.5;
+                c.lineTo(x, wy);
+            }
+            c.lineTo(W, waterBot); c.lineTo(0, waterBot); c.closePath(); c.fill();
+            // Animated wave lines
+            for (let wi = 0; wi < 4; wi++) {
+                const wy = waterTop + (waterBot - waterTop) * ((wi + 1) / 5);
+                const wAlpha = 0.12 + (1 - wi / 4) * 0.08;
+                c.strokeStyle = `rgba(180,220,255,${wAlpha})`; c.lineWidth = 1.2;
+                c.beginPath();
+                for (let x = 0; x <= W; x += 5) {
+                    const yOff = Math.sin((x + time * (0.3 + wi * 0.1) + scrollX * 0.1) * 0.03 + wi * 2) * 3.5;
+                    if (x === 0) c.moveTo(x, wy + yOff); else c.lineTo(x, wy + yOff);
+                }
+                c.stroke();
+            }
+            // Water reflections (lighter blue streaks)
+            for (let ri = 0; ri < 6; ri++) {
+                const rx = ((ri * W / 5 + time * 0.2 + scrollX * 0.1) % (W + 40)) - 20;
+                const ry = waterTop + (waterBot - waterTop) * (0.2 + ri * 0.12);
+                const rw = 15 + ri * 5;
+                c.fillStyle = `rgba(200,235,255,${0.08 + Math.sin(time * 0.02 + ri) * 0.03})`;
+                c.fillRect(rx, ry, rw, 2);
+            }
+            // Shore foam
+            for (let fi = 0; fi < 8; fi++) {
+                const fx = ((fi * W / 7 + time * 0.15 + scrollX * 0.08) % (W + 30)) - 15;
+                const fy = waterBot - 2 + Math.sin(time * 0.06 + fi) * 2;
+                c.fillStyle = `rgba(255,255,255,${0.2 + Math.sin(time * 0.04 + fi * 1.3) * 0.1})`;
+                c.beginPath(); c.ellipse(fx, fy, 8 + fi * 0.5, 2, 0, 0, Math.PI * 2); c.fill();
+            }
+        }
+
+        // ── Terrain-specific 3D decorations (with parallax scroll) ──
+        if (terrain === 'desert') this._drawDesertDecor3D(c, W, H, horizon, time, scrollX, scrollY);
+        else if (terrain === 'mountains') this._drawMountainDecor3D(c, W, H, horizon, time, scrollX, scrollY);
+        else if (terrain === 'coast' || terrain === 'island') this._drawCoastDecor3D(c, W, H, horizon, time, scrollX, scrollY);
+        else if (terrain === 'forest') this._drawForestDecor3D(c, W, H, horizon, time, scrollX, scrollY);
+        else this._drawPlainsDecor3D(c, W, H, horizon, time, scrollX, scrollY);
+
+        // Draw animals (terrain-specific, animated)
+        this._drawTerritoryAnimals3D(c, W, H, tv, horizon);
 
         // Draw buildings (with 3D perspective)
         this._drawTerritoryBuildings3D(c, W, H, tv, horizon);
@@ -6789,19 +7247,59 @@ export class Renderer {
         // Draw player avatar
         this._drawPlayerAvatar(c, W, H, tv, horizon);
 
+        // ── Foreground Grass Blades Overlay ──
+        if (terrain === 'plains' || terrain === 'forest' || terrain === 'island' || terrain === 'peninsula') {
+            const _gseed = tv.tid * 211;
+            const _grng = (n) => { let x = Math.sin(_gseed + n) * 43758.5453; return x - Math.floor(x); };
+            for (let gi = 0; gi < 25; gi++) {
+                const gx = _grng(gi * 17.3) * W;
+                const gBaseY = H - _grng(gi * 9.1) * H * 0.05;
+                const gh = 30 + _grng(gi * 6.7) * 20;
+                const sway = Math.sin(time * 0.015 + gi * 1.5) * 6;
+                const sway2 = Math.sin(time * 0.02 + gi * 2.1) * 4;
+                // Grass blade (curved line)
+                const grassColors = terrain === 'forest'
+                    ? ['#2d5a1e','#3a6e2a','#1a4a10']
+                    : terrain === 'island'
+                        ? ['#3d8b37','#4a9a44','#2d7027']
+                        : ['#4a7c3f','#5a8c4f','#3a6c2f'];
+                c.strokeStyle = grassColors[gi % grassColors.length];
+                c.lineWidth = 2.5 + _grng(gi * 3.3);
+                c.globalAlpha = 0.45;
+                c.beginPath();
+                c.moveTo(gx, gBaseY);
+                c.quadraticCurveTo(gx + sway * 0.5, gBaseY - gh * 0.5, gx + sway, gBaseY - gh);
+                c.stroke();
+                // Second blade offset
+                c.lineWidth = 2 + _grng(gi * 4.1);
+                c.globalAlpha = 0.35;
+                c.beginPath();
+                c.moveTo(gx + 4, gBaseY);
+                c.quadraticCurveTo(gx + 4 + sway2 * 0.5, gBaseY - gh * 0.4, gx + 4 + sway2, gBaseY - gh * 0.85);
+                c.stroke();
+                c.globalAlpha = 1;
+            }
+        }
+
         // Vignette overlay for cinematic feel
         const vigGr = c.createRadialGradient(W/2, H/2, W*0.3, W/2, H/2, W*0.75);
         vigGr.addColorStop(0, 'rgba(0,0,0,0)'); vigGr.addColorStop(1, 'rgba(0,0,0,0.35)');
         c.fillStyle = vigGr; c.fillRect(0, 0, W, H);
+
+        // Ambient particles (dust motes, leaves, fireflies)
+        this._drawAmbientParticles3D(c, W, H, horizon, time, tv);
     }
 
     // ── 3D Desert ──
-    _drawDesertDecor3D(c, W, H, horizon, time) {
-        const vpX = W * 0.5;
-        // Sand dunes with 3D shading
+    _drawDesertDecor3D(c, W, H, horizon, time, scrollX = 0, scrollY = 0) {
+        const vpX = W * 0.5 + scrollX * 0.3;
+        // Sand dunes with 3D shading (parallax: dunes move with depth)
         for (let i = 0; i < 5; i++) {
-            const dx = W * (0.05 + i * 0.22);
-            const dy = horizon + (H - horizon) * (0.15 + i * 0.08);
+            const depth = 0.15 + i * 0.08;
+            const parallaxX = scrollX * (0.2 + depth * 0.8);
+            const parallaxY = scrollY * (0.1 + depth * 0.3);
+            const dx = W * (0.05 + i * 0.22) + parallaxX;
+            const dy = horizon + (H - horizon) * depth + parallaxY;
             const size = 60 + i * 20;
             // Shadow side
             c.fillStyle = `rgba(120,80,30,${0.2 + i * 0.03})`;
@@ -6812,10 +7310,10 @@ export class Renderer {
             c.beginPath(); c.moveTo(dx - size*0.5, dy + size*0.3);
             c.quadraticCurveTo(dx + size*0.2, dy - size*0.25, dx + size, dy + size*0.4); c.fill();
         }
-        // Pyramids in background (3D with shading)
+        // Pyramids in background (3D with shading, slow parallax)
         const pyr = [{x:0.65,s:1},{x:0.78,s:0.7},{x:0.88,s:0.5}];
         for (const p of pyr) {
-            const px = W * p.x, ps = p.s;
+            const px = W * p.x + scrollX * 0.15, ps = p.s;
             const baseY = horizon + 10, topY = horizon - 50*ps;
             // Dark face
             c.fillStyle = 'rgba(100,70,30,0.5)';
@@ -6827,13 +7325,13 @@ export class Renderer {
     }
 
     // ── 3D Mountains ──
-    _drawMountainDecor3D(c, W, H, horizon, time) {
+    _drawMountainDecor3D(c, W, H, horizon, time, scrollX = 0, scrollY = 0) {
         const peaks = [
             {x:0.08,h:0.28,w:80},{x:0.25,h:0.35,w:100},{x:0.45,h:0.22,w:70},
             {x:0.65,h:0.32,w:95},{x:0.82,h:0.26,w:85},{x:0.95,h:0.20,w:60}
         ];
         for (const p of peaks) {
-            const px = W*p.x, baseY = horizon + 5, topY = horizon - H*p.h;
+            const px = W*p.x + scrollX * 0.2, baseY = horizon + 5, topY = horizon - H*p.h;
             // Dark face (right)
             c.fillStyle = 'rgba(50,50,40,0.6)';
             c.beginPath(); c.moveTo(px, topY); c.lineTo(px + p.w, baseY); c.lineTo(px, baseY); c.fill();
@@ -6855,8 +7353,8 @@ export class Renderer {
     }
 
     // ── 3D Coast ──
-    _drawCoastDecor3D(c, W, H, horizon, time) {
-        const waveY = H * 0.78;
+    _drawCoastDecor3D(c, W, H, horizon, time, scrollX = 0, scrollY = 0) {
+        const waveY = H * 0.78 + scrollY * 0.2;
         for (let row = 0; row < 4; row++) {
             c.fillStyle = `rgba(20,${60+row*20},${100+row*20},${0.2 + row*0.08})`;
             c.beginPath(); c.moveTo(0, H);
@@ -6866,9 +7364,9 @@ export class Renderer {
             }
             c.lineTo(W, H); c.fill();
         }
-        // Ship on horizon
-        const shipX = W * 0.3 + Math.sin(time * 0.008) * 30;
-        const shipY = horizon + 15;
+        // Ship on horizon (parallax: moves slowly)
+        const shipX = W * 0.3 + Math.sin(time * 0.008) * 30 + scrollX * 0.15;
+        const shipY = horizon + 15 + scrollY * 0.1;
         c.fillStyle = 'rgba(80,60,40,0.4)';
         c.beginPath(); c.moveTo(shipX-15, shipY); c.lineTo(shipX+15, shipY);
         c.lineTo(shipX+10, shipY-12); c.lineTo(shipX-10, shipY-12); c.fill();
@@ -6877,7 +7375,7 @@ export class Renderer {
     }
 
     // ── 3D Forest ──
-    _drawForestDecor3D(c, W, H, horizon, time) {
+    _drawForestDecor3D(c, W, H, horizon, time, scrollX = 0, scrollY = 0) {
         const trees = [
             {x:0.05,d:0.3,s:1.2},{x:0.15,d:0.2,s:1},{x:0.28,d:0.4,s:0.9},
             {x:0.42,d:0.15,s:1.3},{x:0.55,d:0.35,s:1.1},{x:0.68,d:0.25,s:1},
@@ -6886,8 +7384,10 @@ export class Renderer {
         // Sort by depth (far first)
         trees.sort((a, b) => b.d - a.d);
         for (const tr of trees) {
-            const tx = W * tr.x;
-            const ty = horizon + (H - horizon) * (0.2 + tr.d * 0.5);
+            const parallaxX = scrollX * (0.2 + tr.d * 0.8); // depth-based parallax
+            const parallaxY = scrollY * (0.1 + tr.d * 0.3);
+            const tx = W * tr.x + parallaxX;
+            const ty = horizon + (H - horizon) * (0.2 + tr.d * 0.5) + parallaxY;
             const sz = tr.s * (1 - tr.d * 0.4) * 50;
             const sway = Math.sin(time * 0.015 + tr.x * 10) * 2;
             // Trunk
@@ -6905,25 +7405,165 @@ export class Renderer {
     }
 
     // ── 3D Plains ──
-    _drawPlainsDecor3D(c, W, H, horizon, time) {
-        // Rolling hills in background
-        for (let i = 0; i < 3; i++) {
-            const hy = horizon + 20 + i * 30;
-            const alpha = 0.08 - i * 0.02;
-            c.fillStyle = `rgba(80,120,50,${alpha})`;
+    _drawPlainsDecor3D(c, W, H, horizon, time, scrollX = 0, scrollY = 0) {
+        // Rolling hills in background (enhanced with more layers, parallax)
+        for (let i = 0; i < 4; i++) {
+            const depth = i / 4;
+            const parallaxX = scrollX * (0.2 + depth * 0.6);
+            const hy = horizon + 15 + i * 25 + scrollY * (0.1 + depth * 0.2);
+            const alpha = 0.09 - i * 0.018;
+            const green = 100 + i * 15;
+            c.fillStyle = `rgba(${60+i*10},${green},${40+i*8},${alpha})`;
             c.beginPath(); c.moveTo(0, hy);
-            for (let x = 0; x <= W; x += 20) {
-                c.lineTo(x, hy + Math.sin(x*0.005 + i*2) * 15 + Math.sin(x*0.012 + i) * 8);
+            for (let x = 0; x <= W; x += 15) {
+                c.lineTo(x, hy + Math.sin((x + parallaxX)*0.005 + i*2) * 15 + Math.sin((x + parallaxX)*0.012 + i) * 8 + Math.sin((x + parallaxX)*0.003 + time*0.005 + i) * 5);
             }
             c.lineTo(W, H); c.lineTo(0, H); c.fill();
         }
-        // Grass blades in foreground
-        c.strokeStyle = 'rgba(60,100,30,0.3)'; c.lineWidth = 1.5;
-        for (let i = 0; i < 20; i++) {
-            const gx = (i / 20) * W + Math.sin(i * 7) * 30;
-            const gy = H - 20 - Math.sin(i * 3) * 40;
-            const sway = Math.sin(time * 0.02 + i * 1.5) * 4;
-            c.beginPath(); c.moveTo(gx, gy); c.quadraticCurveTo(gx + sway, gy - 12, gx + sway*1.5, gy - 18); c.stroke();
+
+        // Dense grass blades covering the foreground area (parallax: near objects move fast)
+        const grassColors = [
+            'rgba(50,100,30,',   // dark green
+            'rgba(70,130,40,',  // medium green
+            'rgba(90,150,50,',  // light green
+            'rgba(100,140,35,', // yellow-green
+            'rgba(60,110,25,',  // another dark green
+        ];
+        const flowerColors = ['rgba(220,50,50,', 'rgba(255,220,50,', 'rgba(180,80,220,', 'rgba(255,255,255,'];
+        const breeze = Math.sin(time * 0.015) * 5; // global breeze offset
+        const breeze2 = Math.sin(time * 0.022 + 1.5) * 3; // secondary wave
+
+        // Multiple rows of grass for full foreground coverage
+        for (let row = 0; row < 5; row++) {
+            const rowDepth = row / 5; // 0 = front, 1 = back
+            const parallaxX = scrollX * (0.4 + rowDepth * 0.6);
+            const parallaxY = scrollY * (0.15 + rowDepth * 0.25);
+            const rowY = H - 10 - row * 18 + parallaxY;
+            const rowAlpha = 0.25 + row * 0.06;
+            const bladesInRow = 8 + row * 2; // 8-16 blades per row
+
+            for (let i = 0; i < bladesInRow; i++) {
+                const gx = (i / bladesInRow) * W + Math.sin(i * 13.7 + row * 7) * (W / bladesInRow * 0.4) + parallaxX;
+                const gy = rowY + Math.sin(i * 5.3 + row * 3) * 6;
+                const grassHeight = 8 + ((i * 7 + row * 11) % 18); // 8-25 pixels
+                const sway = breeze + breeze2 + Math.sin(time * 0.02 + i * 1.5 + row * 0.8) * 3;
+                const colorIdx = (i + row * 3) % grassColors.length;
+
+                // Draw grass blade
+                c.strokeStyle = grassColors[colorIdx] + rowAlpha + ')';
+                c.lineWidth = 1 + (grassHeight > 18 ? 0.5 : 0);
+                c.beginPath();
+                c.moveTo(gx, gy);
+                c.quadraticCurveTo(gx + sway * 0.5, gy - grassHeight * 0.5, gx + sway, gy - grassHeight);
+                c.stroke();
+
+                // Wildflowers at some grass tips (~20% of blades)
+                if ((i + row * 7) % 5 === 0) {
+                    const fx = gx + sway;
+                    const fy = gy - grassHeight;
+                    const fColor = flowerColors[(i + row) % flowerColors.length];
+                    c.fillStyle = fColor + (rowAlpha + 0.15) + ')';
+                    c.beginPath(); c.arc(fx, fy, 2, 0, Math.PI * 2); c.fill();
+                    // Tiny stem highlight
+                    c.fillStyle = fColor + '0.2)';
+                    c.beginPath(); c.arc(fx + 1, fy + 1, 1, 0, Math.PI * 2); c.fill();
+                }
+            }
+        }
+
+        // Butterflies floating around (parallax: move with mid-depth)
+        for (let i = 0; i < 4; i++) {
+            const bTime = time * 0.01 + i * 50;
+            const bx = W * (0.15 + (i * 0.22)) + Math.sin(bTime * 0.8) * 40 + Math.cos(bTime * 0.5) * 20 + scrollX * 0.5;
+            const by = H * (0.5 + i * 0.08) + Math.sin(bTime * 0.6 + i) * 20 + Math.cos(bTime * 0.3) * 10 + scrollY * 0.3;
+            const wingFlap = Math.sin(time * 0.15 + i * 3) * 0.8;
+            const bColors = ['rgba(255,180,50,0.6)', 'rgba(200,100,255,0.5)', 'rgba(255,220,180,0.6)', 'rgba(100,180,255,0.5)'];
+            c.fillStyle = bColors[i];
+            // Left wing
+            c.beginPath();
+            c.ellipse(bx - 3, by, Math.max(0.5, Math.abs(wingFlap) * 4), 3, -0.3, 0, Math.PI * 2);
+            c.fill();
+            // Right wing
+            c.beginPath();
+            c.ellipse(bx + 3, by, Math.max(0.5, Math.abs(wingFlap) * 4), 3, 0.3, 0, Math.PI * 2);
+            c.fill();
+            // Body
+            c.fillStyle = 'rgba(40,30,20,0.5)';
+            c.fillRect(bx - 0.5, by - 3, 1, 6);
+        }
+    }
+
+    // ── Ambient Particles (dust motes, leaves, fireflies) ──
+    _drawAmbientParticles3D(c, W, H, horizon, time, tv) {
+        const seed = tv.tid || 0;
+        // Determine day/night for firefly visibility
+        const timeOfDay = (tv.time % 600) / 600;
+        const dayPhase = timeOfDay < 0.25 ? 'dawn' : timeOfDay < 0.5 ? 'day' : timeOfDay < 0.75 ? 'dusk' : 'night';
+        const isNight = dayPhase === 'night' || dayPhase === 'dusk';
+        const nightFactor = dayPhase === 'night' ? 1 : dayPhase === 'dusk' ? 0.4 : 0;
+
+        // Dust motes / pollen (always visible, more during day)
+        const dustCount = 20;
+        for (let i = 0; i < dustCount; i++) {
+            const baseX = ((seed * 13.7 + i * 97.3) % W);
+            const baseY = horizon + ((seed * 7.1 + i * 53.7) % (H - horizon));
+            const drift = Math.sin(time * 0.008 + i * 2.1) * 30;
+            const rise = Math.cos(time * 0.006 + i * 1.7) * 15;
+            const x = ((baseX + drift) % W + W) % W;
+            const y = baseY + rise;
+            const alpha = 0.15 + Math.sin(time * 0.02 + i * 3) * 0.1;
+            c.fillStyle = `rgba(255,255,240,${alpha})`;
+            c.beginPath(); c.arc(x, y, 1 + (i % 3) * 0.5, 0, Math.PI * 2); c.fill();
+        }
+
+        // Falling leaves (occasional, drifting down)
+        const leafCount = 3;
+        for (let i = 0; i < leafCount; i++) {
+            const leafTime = (time * 0.3 + i * 200 + seed * 10) % (H * 2);
+            const lx = ((seed * 29.3 + i * 137) % W) + Math.sin(leafTime * 0.03 + i) * 40;
+            const ly = horizon + (leafTime % (H - horizon));
+            const leafRotation = time * 0.02 + i * 2;
+            const leafColors = ['rgba(140,100,40,', 'rgba(80,130,50,', 'rgba(160,120,30,'];
+            const lc = leafColors[i];
+            c.save();
+            c.translate(((lx % W) + W) % W, ly);
+            c.rotate(leafRotation);
+            c.fillStyle = lc + '0.3)';
+            // Leaf shape
+            c.beginPath();
+            c.ellipse(0, 0, 3, 1.5, 0, 0, Math.PI * 2);
+            c.fill();
+            // Leaf vein
+            c.strokeStyle = lc + '0.2)';
+            c.lineWidth = 0.5;
+            c.beginPath(); c.moveTo(-3, 0); c.lineTo(3, 0); c.stroke();
+            c.restore();
+        }
+
+        // Fireflies at night/dusk (glowing pulsing dots)
+        if (nightFactor > 0.05) {
+            const fireflyCount = 12;
+            for (let i = 0; i < fireflyCount; i++) {
+                const baseX = ((seed * 41.7 + i * 83.3) % W);
+                const baseY = horizon + ((seed * 19.3 + i * 61.7) % (H - horizon)) * 0.8 + (H - horizon) * 0.1;
+                const wander = Math.sin(time * 0.012 + i * 3.7) * 25 + Math.cos(time * 0.009 + i * 2.3) * 15;
+                const float = Math.sin(time * 0.015 + i * 2.1) * 20;
+                const x = ((baseX + wander) % W + W) % W;
+                const y = baseY + float;
+                // Pulsing glow
+                const pulse = (Math.sin(time * 0.05 + i * 4) + 1) * 0.5; // 0-1
+                const alpha = pulse * 0.7 * nightFactor;
+                const glowSize = 6 + pulse * 4;
+                // Outer glow
+                const glow = c.createRadialGradient(x, y, 0, x, y, glowSize);
+                glow.addColorStop(0, `rgba(200,255,100,${alpha})`);
+                glow.addColorStop(1, 'rgba(200,255,100,0)');
+                c.fillStyle = glow;
+                c.fillRect(x - glowSize, y - glowSize, glowSize * 2, glowSize * 2);
+                // Core dot
+                c.fillStyle = `rgba(220,255,150,${alpha * 1.3})`;
+                c.beginPath(); c.arc(x, y, 1.5, 0, Math.PI * 2); c.fill();
+            }
         }
     }
 
@@ -7067,22 +7707,738 @@ export class Renderer {
         c.globalAlpha = 1;
     }
 
+    // ── 3D Animated Animals per terrain ──
+    _drawTerritoryAnimals3D(c, W, H, tv, horizon) {
+        const t = this.g.ts[tv.tid];
+        if (!t) return;
+        const terrain = t.terrain || 'plains';
+        const time = tv.time || 0;
+        const tid = tv.tid || 0;
+
+        // Seeded pseudo-random from territory id
+        const _seed = (s, i) => {
+            let h = (s * 2654435761 + i * 40503 + 12345) >>> 0;
+            h = ((h ^ (h >> 16)) * 2246822507) >>> 0;
+            return (h & 0x7fffffff) / 0x7fffffff;
+        };
+
+        // Build animal list based on terrain
+        const animals = [];
+        const addAnimals = (types) => {
+            types.forEach((tp, i) => {
+                const seed = _seed(tid, i * 137 + 42);
+                animals.push({
+                    type: tp,
+                    x: 0.15 + _seed(tid, i * 73 + 11) * 0.7,     // 0.15–0.85 normalized
+                    depth: 0.3 + _seed(tid, i * 53 + 7) * 0.5,   // 0.3–0.8 depth
+                    phase: _seed(tid, i * 97 + 23) * Math.PI * 2, // animation phase offset
+                    dir: _seed(tid, i * 31 + 17) > 0.5 ? 1 : -1  // direction
+                });
+            });
+        };
+
+        switch (terrain) {
+            case 'plains':
+                addAnimals(['horse','horse','rabbit','rabbit','rabbit','deer','deer','bird','bird','bird']);
+                break;
+            case 'forest':
+                addAnimals(['deer','deer','rabbit','rabbit','rabbit','rabbit','tiger','bird','bird','butterfly','butterfly','butterfly']);
+                break;
+            case 'desert':
+                addAnimals(['camel','camel','snake','bird','bird']);
+                break;
+            case 'mountains':
+                addAnimals(['eagle','eagle','goat','goat','hawk']);
+                break;
+            case 'coast':
+                addAnimals(['dolphin','dolphin','seagull','seagull','seagull','crab','crab']);
+                break;
+            case 'island':
+                addAnimals(['dolphin','dolphin','seagull','seagull','turtle','butterfly','butterfly','butterfly']);
+                break;
+            case 'peninsula':
+                addAnimals(['horse','horse','bird','bird','deer']);
+                break;
+            default:
+                addAnimals(['horse','horse','rabbit','deer']);
+                break;
+        }
+
+        // Maurya bonus: elephant + peacock
+        const ownerEmpire = this.g.empires[t.owner];
+        if (ownerEmpire && ownerEmpire.id === 'maurya') {
+            animals.push({
+                type: 'elephant',
+                x: 0.3 + _seed(tid, 999) * 0.4,
+                depth: 0.5 + _seed(tid, 1001) * 0.2,
+                phase: _seed(tid, 1003) * Math.PI * 2,
+                dir: _seed(tid, 1005) > 0.5 ? 1 : -1
+            });
+            animals.push({
+                type: 'peacock',
+                x: 0.25 + _seed(tid, 1007) * 0.5,
+                depth: 0.35 + _seed(tid, 1009) * 0.3,
+                phase: _seed(tid, 1011) * Math.PI * 2,
+                dir: _seed(tid, 1013) > 0.5 ? 1 : -1
+            });
+        }
+
+        // Sort by depth (far first)
+        animals.sort((a, b) => a.depth - b.depth);
+
+        for (const a of animals) {
+            const depth = a.depth;
+            const scale = 0.4 + depth * 1.2; // depth 0.3→0.76, 0.8→1.36
+            const scrollX = tv.scrollX || 0;
+            const scrollY = tv.scrollY || 0;
+            // Screen position (with parallax)
+            const sx = a.x * W + scrollX * (0.2 + depth * 0.8);
+            const sy = horizon + depth * (H - horizon) * 0.7 + scrollY * (0.1 + depth * 0.3);
+            // Walking horizontal drift
+            const drift = Math.sin(time * 0.3 + a.phase) * 30 * scale;
+            const px = sx + drift;
+
+            this._drawAnimal3D(c, px, sy, a.type, scale, time, a.phase, a.dir, terrain);
+        }
+    }
+
+    // Draw a single animal at screen position
+    _drawAnimal3D(c, x, y, type, scale, time, phase, dir, terrain) {
+        c.save();
+        c.translate(x, y);
+        if (dir < 0) { c.scale(-1, 1); }
+
+        const walk = Math.sin(time * 3 + phase);
+        const bob = Math.abs(walk) * 1.5 * scale;
+
+        switch (type) {
+            case 'horse': this._drawHorse(c, scale, walk, bob); break;
+            case 'rabbit': this._drawRabbit(c, scale, walk, bob); break;
+            case 'deer': this._drawDeer(c, scale, walk, bob); break;
+            case 'bird': this._drawBird(c, scale, time, phase); break;
+            case 'camel': this._drawCamel(c, scale, walk, bob); break;
+            case 'snake': this._drawSnake(c, scale, time, phase); break;
+            case 'tiger': this._drawTiger(c, scale, walk, bob); break;
+            case 'butterfly': this._drawButterfly(c, scale, time, phase); break;
+            case 'eagle': this._drawEagle(c, scale, time, phase); break;
+            case 'goat': this._drawGoat(c, scale, walk, bob); break;
+            case 'hawk': this._drawHawk(c, scale, time, phase); break;
+            case 'dolphin': this._drawDolphin(c, scale, time, phase); break;
+            case 'seagull': this._drawSeagull(c, scale, time, phase); break;
+            case 'crab': this._drawCrab(c, scale, time, phase); break;
+            case 'turtle': this._drawTurtle(c, scale, time, phase); break;
+            case 'elephant': this._drawElephant(c, scale, walk, bob); break;
+            case 'peacock': this._drawPeacock(c, scale, time, phase); break;
+        }
+        c.restore();
+    }
+
+    // ── Individual animal drawing helpers ──
+
+    _drawHorse(c, s, walk, bob) {
+        const h = 28 * s;
+        // Body
+        c.fillStyle = '#8B5E3C';
+        c.beginPath();
+        c.ellipse(0, -h * 0.55 - bob, h * 0.55, h * 0.3, 0, 0, Math.PI * 2);
+        c.fill();
+        // Legs
+        c.strokeStyle = '#6B4226';
+        c.lineWidth = Math.max(1, 2 * s);
+        const legY = -h * 0.3 - bob;
+        // Front legs
+        const f1 = walk * 4 * s;
+        c.beginPath(); c.moveTo(h * 0.3, legY); c.lineTo(h * 0.3 + f1, 0); c.stroke();
+        c.beginPath(); c.moveTo(h * 0.15, legY); c.lineTo(h * 0.15 - f1, 0); c.stroke();
+        // Back legs
+        c.beginPath(); c.moveTo(-h * 0.3, legY); c.lineTo(-h * 0.3 - f1, 0); c.stroke();
+        c.beginPath(); c.moveTo(-h * 0.15, legY); c.lineTo(-h * 0.15 + f1, 0); c.stroke();
+        // Neck & head
+        c.fillStyle = '#8B5E3C';
+        c.beginPath(); c.moveTo(h * 0.35, -h * 0.7 - bob); c.lineTo(h * 0.5, -h * 1.1 - bob); c.lineTo(h * 0.6, -h * 1.1 - bob); c.lineTo(h * 0.5, -h * 0.65 - bob); c.fill();
+        c.beginPath(); c.arc(h * 0.55, -h * 1.15 - bob, h * 0.12, 0, Math.PI * 2); c.fill();
+        // Mane
+        c.strokeStyle = '#3E2723';
+        c.lineWidth = Math.max(1, 1.5 * s);
+        c.beginPath();
+        c.moveTo(h * 0.4, -h * 0.8 - bob);
+        c.quadraticCurveTo(h * 0.32, -h * 0.95 - bob, h * 0.48, -h * 1.1 - bob);
+        c.stroke();
+        // Tail
+        c.strokeStyle = '#3E2723';
+        c.beginPath(); c.moveTo(-h * 0.5, -h * 0.5 - bob);
+        c.quadraticCurveTo(-h * 0.75, -h * 0.4 - bob + Math.sin(walk) * 3 * s, -h * 0.8, -h * 0.2 - bob);
+        c.stroke();
+    }
+
+    _drawRabbit(c, s, walk, bob) {
+        const h = 10 * s;
+        c.fillStyle = '#C8B89A';
+        // Body
+        c.beginPath();
+        c.ellipse(0, -h * 0.5 - bob, h * 0.4, h * 0.35, 0, 0, Math.PI * 2);
+        c.fill();
+        // Head
+        c.beginPath(); c.arc(h * 0.25, -h * 0.85 - bob, h * 0.2, 0, Math.PI * 2); c.fill();
+        // Ears
+        c.strokeStyle = '#C8B89A';
+        c.lineWidth = Math.max(1, 1.5 * s);
+        c.beginPath(); c.moveTo(h * 0.2, -h * 1.0 - bob); c.lineTo(h * 0.1, -h * 1.6 - bob); c.stroke();
+        c.beginPath(); c.moveTo(h * 0.3, -h * 1.0 - bob); c.lineTo(h * 0.35, -h * 1.6 - bob); c.stroke();
+        // Legs (hopping)
+        const hop = Math.abs(walk) * 3 * s;
+        c.fillStyle = '#C8B89A';
+        c.fillRect(-h * 0.15, -h * 0.2 - bob, h * 0.15, h * 0.2 - hop);
+        c.fillRect(h * 0.05, -h * 0.2 - bob, h * 0.15, h * 0.2 + hop);
+        // Tail puff
+        c.fillStyle = '#F5F0E8';
+        c.beginPath(); c.arc(-h * 0.35, -h * 0.45 - bob, h * 0.1, 0, Math.PI * 2); c.fill();
+    }
+
+    _drawDeer(c, s, walk, bob) {
+        const h = 22 * s;
+        // Body
+        c.fillStyle = '#A0764E';
+        c.beginPath();
+        c.ellipse(0, -h * 0.55 - bob, h * 0.5, h * 0.25, 0, 0, Math.PI * 2);
+        c.fill();
+        // White spots
+        c.fillStyle = 'rgba(255,255,240,0.5)';
+        c.beginPath(); c.arc(h * 0.1, -h * 0.6 - bob, h * 0.04, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(-h * 0.15, -h * 0.5 - bob, h * 0.04, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(h * 0.25, -h * 0.55 - bob, h * 0.03, 0, Math.PI * 2); c.fill();
+        // Legs
+        c.strokeStyle = '#7D5A3C';
+        c.lineWidth = Math.max(1, 1.5 * s);
+        const legY = -h * 0.35 - bob;
+        const f1 = walk * 3 * s;
+        c.beginPath(); c.moveTo(h * 0.25, legY); c.lineTo(h * 0.25 + f1, 0); c.stroke();
+        c.beginPath(); c.moveTo(h * 0.1, legY); c.lineTo(h * 0.1 - f1, 0); c.stroke();
+        c.beginPath(); c.moveTo(-h * 0.25, legY); c.lineTo(-h * 0.25 - f1, 0); c.stroke();
+        c.beginPath(); c.moveTo(-h * 0.1, legY); c.lineTo(-h * 0.1 + f1, 0); c.stroke();
+        // Neck & head
+        c.fillStyle = '#A0764E';
+        c.beginPath();
+        c.moveTo(h * 0.3, -h * 0.7 - bob); c.lineTo(h * 0.45, -h * 1.05 - bob); c.lineTo(h * 0.55, -h * 1.05 - bob); c.lineTo(h * 0.45, -h * 0.65 - bob); c.fill();
+        c.beginPath(); c.arc(h * 0.5, -h * 1.1 - bob, h * 0.1, 0, Math.PI * 2); c.fill();
+        // Antlers
+        c.strokeStyle = '#5D4037';
+        c.lineWidth = Math.max(1, 1.2 * s);
+        const ax = h * 0.5, ay = -h * 1.2 - bob;
+        c.beginPath(); c.moveTo(ax, ay); c.lineTo(ax + h * 0.12, ay - h * 0.2); c.lineTo(ax + h * 0.18, ay - h * 0.15); c.stroke();
+        c.beginPath(); c.moveTo(ax, ay); c.lineTo(ax - h * 0.05, ay - h * 0.22); c.stroke();
+        c.beginPath(); c.moveTo(ax - h * 0.05, ay - h * 0.15); c.lineTo(ax - h * 0.12, ay - h * 0.2); c.stroke();
+        // Tail
+        c.fillStyle = '#F5F0E8';
+        c.beginPath(); c.arc(-h * 0.45, -h * 0.5 - bob, h * 0.06, 0, Math.PI * 2); c.fill();
+    }
+
+    _drawBird(c, s, time, phase) {
+        const h = 8 * s;
+        const flap = Math.sin(time * 5 + phase) * 0.5;
+        c.fillStyle = '#444';
+        // Body
+        c.beginPath(); c.ellipse(0, 0, h * 0.4, h * 0.2, 0, 0, Math.PI * 2); c.fill();
+        // Wings
+        c.beginPath();
+        c.moveTo(-h * 0.1, 0);
+        c.quadraticCurveTo(-h * 0.8, -h * (0.6 + flap), -h * 1.2, -h * (0.2 + flap * 0.5));
+        c.quadraticCurveTo(-h * 0.5, h * 0.1, -h * 0.1, 0);
+        c.fill();
+        c.beginPath();
+        c.moveTo(h * 0.1, 0);
+        c.quadraticCurveTo(h * 0.8, -h * (0.6 + flap), h * 1.2, -h * (0.2 + flap * 0.5));
+        c.quadraticCurveTo(h * 0.5, h * 0.1, h * 0.1, 0);
+        c.fill();
+        // Beak
+        c.fillStyle = '#FF8F00';
+        c.beginPath();
+        c.moveTo(h * 0.35, -h * 0.05); c.lineTo(h * 0.55, 0); c.lineTo(h * 0.35, h * 0.05);
+        c.fill();
+    }
+
+    _drawCamel(c, s, walk, bob) {
+        const h = 30 * s;
+        // Body
+        c.fillStyle = '#C4A265';
+        c.beginPath();
+        c.ellipse(0, -h * 0.5 - bob, h * 0.55, h * 0.25, 0, 0, Math.PI * 2);
+        c.fill();
+        // Humps
+        c.beginPath(); c.arc(-h * 0.15, -h * 0.75 - bob, h * 0.18, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(h * 0.2, -h * 0.72 - bob, h * 0.15, 0, Math.PI * 2); c.fill();
+        // Neck
+        c.beginPath();
+        c.moveTo(h * 0.4, -h * 0.6 - bob); c.lineTo(h * 0.55, -h * 1.0 - bob);
+        c.lineTo(h * 0.65, -h * 1.0 - bob); c.lineTo(h * 0.55, -h * 0.55 - bob); c.fill();
+        // Head
+        c.beginPath(); c.ellipse(h * 0.6, -h * 1.05 - bob, h * 0.12, h * 0.08, 0, 0, Math.PI * 2); c.fill();
+        // Legs
+        c.strokeStyle = '#A08040';
+        c.lineWidth = Math.max(1, 2.5 * s);
+        const legY = -h * 0.3 - bob;
+        const f1 = walk * 3 * s * 0.6;
+        c.beginPath(); c.moveTo(h * 0.3, legY); c.lineTo(h * 0.3 + f1, 0); c.stroke();
+        c.beginPath(); c.moveTo(h * 0.15, legY); c.lineTo(h * 0.15 - f1, 0); c.stroke();
+        c.beginPath(); c.moveTo(-h * 0.3, legY); c.lineTo(-h * 0.3 - f1, 0); c.stroke();
+        c.beginPath(); c.moveTo(-h * 0.15, legY); c.lineTo(-h * 0.15 + f1, 0); c.stroke();
+    }
+
+    _drawSnake(c, s, time, phase) {
+        const h = 6 * s;
+        c.strokeStyle = '#5D8A3C';
+        c.lineWidth = Math.max(1, 2.5 * s);
+        c.lineCap = 'round';
+        c.beginPath();
+        for (let i = -5; i <= 5; i++) {
+            const sx = i * h * 0.4;
+            const sy = Math.sin(time * 4 + phase + i * 0.6) * h * 0.3;
+            if (i === -5) c.moveTo(sx, sy); else c.lineTo(sx, sy);
+        }
+        c.stroke();
+        // Head
+        c.fillStyle = '#5D8A3C';
+        const hx = 5 * h * 0.4;
+        const hy = Math.sin(time * 4 + phase + 5 * 0.6) * h * 0.3;
+        c.beginPath(); c.arc(hx, hy, h * 0.2, 0, Math.PI * 2); c.fill();
+        // Tongue
+        c.strokeStyle = '#D32F2F';
+        c.lineWidth = Math.max(1, 1 * s);
+        c.beginPath(); c.moveTo(hx + h * 0.2, hy); c.lineTo(hx + h * 0.4, hy - h * 0.1); c.stroke();
+        c.beginPath(); c.moveTo(hx + h * 0.2, hy); c.lineTo(hx + h * 0.4, hy + h * 0.1); c.stroke();
+    }
+
+    _drawTiger(c, s, walk, bob) {
+        const h = 22 * s;
+        // Body
+        c.fillStyle = '#E67E22';
+        c.beginPath();
+        c.ellipse(0, -h * 0.55 - bob, h * 0.55, h * 0.28, 0, 0, Math.PI * 2);
+        c.fill();
+        // Stripes
+        c.strokeStyle = '#1B1B1B';
+        c.lineWidth = Math.max(1, 2 * s);
+        for (let i = -2; i <= 2; i++) {
+            const sx = i * h * 0.18;
+            c.beginPath();
+            c.moveTo(sx, -h * 0.8 - bob); c.lineTo(sx + h * 0.03, -h * 0.3 - bob);
+            c.stroke();
+        }
+        // Legs
+        c.strokeStyle = '#E67E22';
+        c.lineWidth = Math.max(1, 2.5 * s);
+        const legY = -h * 0.3 - bob;
+        const f1 = walk * 3 * s;
+        c.beginPath(); c.moveTo(h * 0.25, legY); c.lineTo(h * 0.25 + f1, 0); c.stroke();
+        c.beginPath(); c.moveTo(h * 0.1, legY); c.lineTo(h * 0.1 - f1, 0); c.stroke();
+        c.beginPath(); c.moveTo(-h * 0.25, legY); c.lineTo(-h * 0.25 - f1, 0); c.stroke();
+        c.beginPath(); c.moveTo(-h * 0.1, legY); c.lineTo(-h * 0.1 + f1, 0); c.stroke();
+        // Head
+        c.fillStyle = '#E67E22';
+        c.beginPath(); c.arc(h * 0.45, -h * 0.7 - bob, h * 0.18, 0, Math.PI * 2); c.fill();
+        // Ears
+        c.beginPath(); c.arc(h * 0.35, -h * 0.85 - bob, h * 0.07, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(h * 0.55, -h * 0.85 - bob, h * 0.07, 0, Math.PI * 2); c.fill();
+        // Eyes
+        c.fillStyle = '#FFEB3B';
+        c.beginPath(); c.arc(h * 0.42, -h * 0.72 - bob, h * 0.04, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(h * 0.52, -h * 0.72 - bob, h * 0.04, 0, Math.PI * 2); c.fill();
+        // Tail
+        c.strokeStyle = '#E67E22';
+        c.lineWidth = Math.max(1, 2 * s);
+        c.beginPath();
+        c.moveTo(-h * 0.5, -h * 0.5 - bob);
+        c.quadraticCurveTo(-h * 0.8, -h * 0.3 - bob, -h * 0.7, -h * 0.1 - bob + Math.sin(walk) * 2 * s);
+        c.stroke();
+    }
+
+    _drawButterfly(c, s, time, phase) {
+        const h = 6 * s;
+        const flap = Math.sin(time * 6 + phase) * 0.8;
+        const dx = Math.sin(time * 1.5 + phase) * 15 * s;
+        const dy = Math.cos(time * 2 + phase) * 5 * s;
+        // Wings
+        c.fillStyle = '#AB47BC';
+        c.globalAlpha = 0.7;
+        c.beginPath();
+        c.moveTo(0, dy);
+        c.quadraticCurveTo(-h * (1 + flap), dy - h * 0.8, -h * 0.3, dy);
+        c.quadraticCurveTo(-h * (0.5 + flap * 0.5), dy + h * 0.5, 0, dy);
+        c.fill();
+        c.fillStyle = '#7E57C2';
+        c.beginPath();
+        c.moveTo(0, dy);
+        c.quadraticCurveTo(h * (1 + flap), dy - h * 0.8, h * 0.3, dy);
+        c.quadraticCurveTo(h * (0.5 + flap * 0.5), dy + h * 0.5, 0, dy);
+        c.fill();
+        c.globalAlpha = 1;
+        // Body
+        c.fillStyle = '#333';
+        c.fillRect(-0.5 + dx, dy - h * 0.3, 1.5 * s, h * 0.6);
+    }
+
+    _drawEagle(c, s, time, phase) {
+        const h = 14 * s;
+        const flap = Math.sin(time * 3 + phase) * 0.4;
+        // Body
+        c.fillStyle = '#3E2723';
+        c.beginPath(); c.ellipse(0, 0, h * 0.35, h * 0.18, 0, 0, Math.PI * 2); c.fill();
+        // Wings spread wide
+        c.fillStyle = '#4E342E';
+        c.beginPath();
+        c.moveTo(-h * 0.2, 0);
+        c.quadraticCurveTo(-h * 1.2, -h * (0.7 + flap), -h * 1.8, -h * (0.1 + flap * 0.3));
+        c.quadraticCurveTo(-h * 1.0, h * 0.15, -h * 0.2, 0);
+        c.fill();
+        c.beginPath();
+        c.moveTo(h * 0.2, 0);
+        c.quadraticCurveTo(h * 1.2, -h * (0.7 + flap), h * 1.8, -h * (0.1 + flap * 0.3));
+        c.quadraticCurveTo(h * 1.0, h * 0.15, h * 0.2, 0);
+        c.fill();
+        // Head
+        c.fillStyle = '#F5F5F5';
+        c.beginPath(); c.arc(h * 0.3, -h * 0.15, h * 0.12, 0, Math.PI * 2); c.fill();
+        // Beak
+        c.fillStyle = '#FF8F00';
+        c.beginPath();
+        c.moveTo(h * 0.4, -h * 0.15); c.lineTo(h * 0.55, -h * 0.1); c.lineTo(h * 0.4, -h * 0.05);
+        c.fill();
+    }
+
+    _drawGoat(c, s, walk, bob) {
+        const h = 16 * s;
+        // Body
+        c.fillStyle = '#E8DCC8';
+        c.beginPath();
+        c.ellipse(0, -h * 0.55 - bob, h * 0.4, h * 0.22, 0, 0, Math.PI * 2);
+        c.fill();
+        // Legs
+        c.strokeStyle = '#BCA68E';
+        c.lineWidth = Math.max(1, 1.5 * s);
+        const legY = -h * 0.35 - bob;
+        const f1 = walk * 3 * s;
+        c.beginPath(); c.moveTo(h * 0.2, legY); c.lineTo(h * 0.2 + f1, 0); c.stroke();
+        c.beginPath(); c.moveTo(h * 0.08, legY); c.lineTo(h * 0.08 - f1, 0); c.stroke();
+        c.beginPath(); c.moveTo(-h * 0.2, legY); c.lineTo(-h * 0.2 - f1, 0); c.stroke();
+        c.beginPath(); c.moveTo(-h * 0.08, legY); c.lineTo(-h * 0.08 + f1, 0); c.stroke();
+        // Head
+        c.fillStyle = '#E8DCC8';
+        c.beginPath(); c.arc(h * 0.35, -h * 0.75 - bob, h * 0.15, 0, Math.PI * 2); c.fill();
+        // Curved horns
+        c.strokeStyle = '#5D4037';
+        c.lineWidth = Math.max(1, 1.5 * s);
+        c.beginPath(); c.moveTo(h * 0.3, -h * 0.9 - bob); c.quadraticCurveTo(h * 0.15, -h * 1.2 - bob, h * 0.05, -h * 0.95 - bob); c.stroke();
+        c.beginPath(); c.moveTo(h * 0.4, -h * 0.9 - bob); c.quadraticCurveTo(h * 0.55, -h * 1.2 - bob, h * 0.65, -h * 0.95 - bob); c.stroke();
+    }
+
+    _drawHawk(c, s, time, phase) {
+        const h = 12 * s;
+        const flap = Math.sin(time * 4 + phase) * 0.5;
+        // Body
+        c.fillStyle = '#37474F';
+        c.beginPath(); c.ellipse(0, 0, h * 0.3, h * 0.15, 0, 0, Math.PI * 2); c.fill();
+        // Wings
+        c.fillStyle = '#455A64';
+        c.beginPath();
+        c.moveTo(-h * 0.15, 0);
+        c.quadraticCurveTo(-h * 1.0, -h * (0.6 + flap), -h * 1.5, -h * (0.15 + flap * 0.3));
+        c.quadraticCurveTo(-h * 0.8, h * 0.1, -h * 0.15, 0);
+        c.fill();
+        c.beginPath();
+        c.moveTo(h * 0.15, 0);
+        c.quadraticCurveTo(h * 1.0, -h * (0.6 + flap), h * 1.5, -h * (0.15 + flap * 0.3));
+        c.quadraticCurveTo(h * 0.8, h * 0.1, h * 0.15, 0);
+        c.fill();
+        // Beak
+        c.fillStyle = '#FF8F00';
+        c.beginPath();
+        c.moveTo(h * 0.25, -h * 0.05); c.lineTo(h * 0.4, 0); c.lineTo(h * 0.25, h * 0.05);
+        c.fill();
+    }
+
+    _drawDolphin(c, s, time, phase) {
+        const h = 18 * s;
+        const jumpY = -Math.abs(Math.sin(time * 2 + phase)) * h * 1.5;
+        const jumpAngle = Math.sin(time * 2 + phase) * 0.5;
+        c.save();
+        c.translate(0, jumpY);
+        c.rotate(jumpAngle);
+        // Body
+        c.fillStyle = '#5C8DB5';
+        c.beginPath();
+        c.ellipse(0, 0, h * 0.7, h * 0.22, 0, 0, Math.PI * 2);
+        c.fill();
+        // Belly
+        c.fillStyle = '#B3D4E8';
+        c.beginPath();
+        c.ellipse(0, h * 0.08, h * 0.5, h * 0.12, 0, 0, Math.PI);
+        c.fill();
+        // Snout
+        c.fillStyle = '#5C8DB5';
+        c.beginPath(); c.ellipse(h * 0.65, -h * 0.02, h * 0.15, h * 0.08, 0, 0, Math.PI * 2); c.fill();
+        // Dorsal fin
+        c.beginPath();
+        c.moveTo(-h * 0.05, -h * 0.2);
+        c.lineTo(0, -h * 0.45);
+        c.lineTo(h * 0.15, -h * 0.2);
+        c.fill();
+        // Tail
+        c.beginPath();
+        c.moveTo(-h * 0.6, 0);
+        c.lineTo(-h * 0.85, -h * 0.2);
+        c.lineTo(-h * 0.7, 0);
+        c.lineTo(-h * 0.85, h * 0.15);
+        c.lineTo(-h * 0.6, 0);
+        c.fill();
+        // Eye
+        c.fillStyle = '#FFF';
+        c.beginPath(); c.arc(h * 0.45, -h * 0.06, h * 0.04, 0, Math.PI * 2); c.fill();
+        c.restore();
+    }
+
+    _drawSeagull(c, s, time, phase) {
+        const h = 8 * s;
+        const flap = Math.sin(time * 4.5 + phase) * 0.4;
+        c.fillStyle = '#FAFAFA';
+        // Body
+        c.beginPath(); c.ellipse(0, 0, h * 0.35, h * 0.18, 0, 0, Math.PI * 2); c.fill();
+        // Wings
+        c.beginPath();
+        c.moveTo(-h * 0.15, 0);
+        c.quadraticCurveTo(-h * 0.8, -h * (0.5 + flap), -h * 1.2, -h * (0.1 + flap * 0.3));
+        c.quadraticCurveTo(-h * 0.6, h * 0.1, -h * 0.15, 0);
+        c.fill();
+        c.beginPath();
+        c.moveTo(h * 0.15, 0);
+        c.quadraticCurveTo(h * 0.8, -h * (0.5 + flap), h * 1.2, -h * (0.1 + flap * 0.3));
+        c.quadraticCurveTo(h * 0.6, h * 0.1, h * 0.15, 0);
+        c.fill();
+        // Wing tips
+        c.fillStyle = '#222';
+        c.beginPath(); c.arc(-h * 1.15, -h * (0.1 + flap * 0.3), h * 0.08, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(h * 1.15, -h * (0.1 + flap * 0.3), h * 0.08, 0, Math.PI * 2); c.fill();
+    }
+
+    _drawCrab(c, s, time, phase) {
+        const h = 8 * s;
+        const walk = Math.sin(time * 2.5 + phase);
+        // Body
+        c.fillStyle = '#D84315';
+        c.beginPath();
+        c.ellipse(0, 0, h * 0.5, h * 0.35, 0, 0, Math.PI * 2);
+        c.fill();
+        // Claws
+        const clawAngle = walk * 0.3;
+        c.fillStyle = '#BF360C';
+        // Left claw
+        c.save(); c.translate(-h * 0.6, -h * 0.2); c.rotate(-0.5 + clawAngle);
+        c.beginPath(); c.ellipse(0, 0, h * 0.2, h * 0.12, 0, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.ellipse(h * 0.15, -h * 0.08, h * 0.08, h * 0.12, 0.3, 0, Math.PI * 2); c.fill();
+        c.restore();
+        // Right claw
+        c.save(); c.translate(h * 0.6, -h * 0.2); c.rotate(0.5 - clawAngle);
+        c.beginPath(); c.ellipse(0, 0, h * 0.2, h * 0.12, 0, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.ellipse(-h * 0.15, -h * 0.08, h * 0.08, h * 0.12, -0.3, 0, Math.PI * 2); c.fill();
+        c.restore();
+        // Eyes
+        c.strokeStyle = '#BF360C';
+        c.lineWidth = Math.max(1, 1 * s);
+        c.beginPath(); c.moveTo(-h * 0.15, -h * 0.3); c.lineTo(-h * 0.2, -h * 0.5); c.stroke();
+        c.beginPath(); c.moveTo(h * 0.15, -h * 0.3); c.lineTo(h * 0.2, -h * 0.5); c.stroke();
+        c.fillStyle = '#000';
+        c.beginPath(); c.arc(-h * 0.2, -h * 0.5, h * 0.04, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(h * 0.2, -h * 0.5, h * 0.04, 0, Math.PI * 2); c.fill();
+        // Legs
+        c.strokeStyle = '#BF360C';
+        c.lineWidth = Math.max(1, 1 * s);
+        for (let i = -2; i <= 2; i++) {
+            if (i === 0) continue;
+            c.beginPath();
+            c.moveTo(i * h * 0.12, h * 0.25);
+            c.lineTo(i * h * 0.18 + walk * h * 0.05, h * 0.45);
+            c.stroke();
+        }
+    }
+
+    _drawTurtle(c, s, time, phase) {
+        const h = 12 * s;
+        const walk = Math.sin(time * 2 + phase);
+        // Shell
+        c.fillStyle = '#4E7A3E';
+        c.beginPath();
+        c.ellipse(0, -h * 0.25, h * 0.5, h * 0.35, 0, 0, Math.PI * 2);
+        c.fill();
+        // Shell pattern
+        c.strokeStyle = '#2E5A1E';
+        c.lineWidth = Math.max(1, 1 * s);
+        c.beginPath(); c.moveTo(-h * 0.2, -h * 0.55); c.lineTo(-h * 0.2, -h * 0.0); c.stroke();
+        c.beginPath(); c.moveTo(h * 0.2, -h * 0.55); c.lineTo(h * 0.2, -h * 0.0); c.stroke();
+        c.beginPath(); c.moveTo(-h * 0.4, -h * 0.25); c.lineTo(h * 0.4, -h * 0.25); c.stroke();
+        // Head
+        c.fillStyle = '#6B9B5A';
+        c.beginPath(); c.ellipse(h * 0.5, -h * 0.15, h * 0.12, h * 0.1, 0, 0, Math.PI * 2); c.fill();
+        // Eye
+        c.fillStyle = '#000';
+        c.beginPath(); c.arc(h * 0.55, -h * 0.18, h * 0.03, 0, Math.PI * 2); c.fill();
+        // Legs
+        c.fillStyle = '#6B9B5A';
+        const f1 = walk * 2 * s;
+        c.fillRect(-h * 0.35 + f1, 0, h * 0.15, h * 0.12);
+        c.fillRect(h * 0.2 - f1, 0, h * 0.15, h * 0.12);
+        // Tail
+        c.beginPath();
+        c.moveTo(-h * 0.45, -h * 0.2);
+        c.lineTo(-h * 0.65, -h * 0.15);
+        c.lineTo(-h * 0.55, -h * 0.1);
+        c.fill();
+    }
+
+    _drawElephant(c, s, walk, bob) {
+        const h = 40 * s;
+        // Body
+        c.fillStyle = '#8E8E8E';
+        c.beginPath();
+        c.ellipse(0, -h * 0.5 - bob, h * 0.55, h * 0.32, 0, 0, Math.PI * 2);
+        c.fill();
+        // Legs
+        c.fillStyle = '#7A7A7A';
+        const legY = -h * 0.2 - bob;
+        const f1 = walk * 2.5 * s;
+        c.fillRect(h * 0.3 + f1, legY, h * 0.12, h * 0.2);
+        c.fillRect(h * 0.12 - f1, legY, h * 0.12, h * 0.2);
+        c.fillRect(-h * 0.3 - f1, legY, h * 0.12, h * 0.2);
+        c.fillRect(-h * 0.12 + f1, legY, h * 0.12, h * 0.2);
+        // Feet
+        c.fillStyle = '#6E6E6E';
+        c.beginPath(); c.ellipse(h * 0.36 + f1, 0, h * 0.1, h * 0.04, 0, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.ellipse(h * 0.18 - f1, 0, h * 0.1, h * 0.04, 0, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.ellipse(-h * 0.24 - f1, 0, h * 0.1, h * 0.04, 0, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.ellipse(-h * 0.06 + f1, 0, h * 0.1, h * 0.04, 0, 0, Math.PI * 2); c.fill();
+        // Head
+        c.fillStyle = '#8E8E8E';
+        c.beginPath(); c.arc(h * 0.5, -h * 0.7 - bob, h * 0.25, 0, Math.PI * 2); c.fill();
+        // Ears
+        c.fillStyle = '#7A7A7A';
+        c.beginPath();
+        c.ellipse(h * 0.3, -h * 0.65 - bob, h * 0.18, h * 0.25, -0.2, 0, Math.PI * 2);
+        c.fill();
+        c.beginPath();
+        c.ellipse(h * 0.7, -h * 0.65 - bob, h * 0.18, h * 0.25, 0.2, 0, Math.PI * 2);
+        c.fill();
+        // Trunk
+        c.strokeStyle = '#8E8E8E';
+        c.lineWidth = Math.max(2, 4 * s);
+        c.lineCap = 'round';
+        c.beginPath();
+        c.moveTo(h * 0.55, -h * 0.5 - bob);
+        c.quadraticCurveTo(h * 0.65, -h * 0.25 - bob + Math.sin(walk) * 3 * s, h * 0.6, -h * 0.05 - bob);
+        c.stroke();
+        // Eye
+        c.fillStyle = '#333';
+        c.beginPath(); c.arc(h * 0.55, -h * 0.73 - bob, h * 0.04, 0, Math.PI * 2); c.fill();
+        // Tusks
+        c.fillStyle = '#FFFFF0';
+        c.beginPath();
+        c.moveTo(h * 0.48, -h * 0.52 - bob);
+        c.lineTo(h * 0.45, -h * 0.3 - bob);
+        c.lineTo(h * 0.5, -h * 0.5 - bob);
+        c.fill();
+
+        // Mahout (rider) on top
+        const ry = -h * 0.82 - bob;
+        // Body
+        c.fillStyle = '#FF8F00';
+        c.fillRect(-h * 0.05, ry - h * 0.15, h * 0.15, h * 0.18);
+        // Head
+        c.fillStyle = '#A0764E';
+        c.beginPath(); c.arc(h * 0.02, ry - h * 0.22, h * 0.07, 0, Math.PI * 2); c.fill();
+        // Turban
+        c.fillStyle = '#E53935';
+        c.beginPath(); c.arc(h * 0.02, ry - h * 0.27, h * 0.08, Math.PI, 0); c.fill();
+    }
+
+    _drawPeacock(c, s, time, phase) {
+        const h = 20 * s;
+        // Tail fan display
+        const fanOpen = 0.8 + Math.sin(time * 0.8 + phase) * 0.2;
+        const colors = ['#1A237E', '#0D47A1', '#00838F', '#2E7D32', '#558B2F', '#F9A825', '#FF6F00', '#D84315'];
+        c.globalAlpha = 0.6;
+        for (let i = 0; i < 12; i++) {
+            const angle = -Math.PI * 0.8 + (i / 11) * Math.PI * 1.6;
+            const r = h * 1.2 * fanOpen;
+            const fx = Math.cos(angle) * r * 0.3;
+            const fy = -h * 0.5 + Math.sin(angle) * r - h * 0.5;
+            c.fillStyle = colors[i % colors.length];
+            c.beginPath();
+            c.ellipse(fx, fy, h * 0.15, h * 0.35, angle - Math.PI / 2, 0, Math.PI * 2);
+            c.fill();
+            // Eye spot
+            c.fillStyle = '#1B5E20';
+            c.beginPath(); c.arc(fx, fy + h * 0.15, h * 0.06, 0, Math.PI * 2); c.fill();
+            c.fillStyle = '#0D47A1';
+            c.beginPath(); c.arc(fx, fy + h * 0.15, h * 0.035, 0, Math.PI * 2); c.fill();
+        }
+        c.globalAlpha = 1;
+        // Body
+        c.fillStyle = '#1565C0';
+        c.beginPath();
+        c.ellipse(0, -h * 0.3, h * 0.2, h * 0.25, 0, 0, Math.PI * 2);
+        c.fill();
+        // Neck
+        c.fillStyle = '#1565C0';
+        c.beginPath();
+        c.moveTo(h * 0.05, -h * 0.5); c.lineTo(h * 0.15, -h * 0.8); c.lineTo(h * 0.25, -h * 0.8); c.lineTo(h * 0.15, -h * 0.45);
+        c.fill();
+        // Head
+        c.beginPath(); c.arc(h * 0.2, -h * 0.85, h * 0.1, 0, Math.PI * 2); c.fill();
+        // Crown
+        c.fillStyle = '#1565C0';
+        c.beginPath();
+        c.moveTo(h * 0.15, -h * 0.95);
+        c.lineTo(h * 0.2, -h * 1.15);
+        c.lineTo(h * 0.25, -h * 0.95);
+        c.fill();
+        // Beak
+        c.fillStyle = '#FF8F00';
+        c.beginPath();
+        c.moveTo(h * 0.28, -h * 0.85); c.lineTo(h * 0.38, -h * 0.82); c.lineTo(h * 0.28, -h * 0.8);
+        c.fill();
+        // Legs
+        c.strokeStyle = '#795548';
+        c.lineWidth = Math.max(1, 1 * s);
+        c.beginPath(); c.moveTo(0, -h * 0.08); c.lineTo(0, 0); c.stroke();
+        c.beginPath(); c.moveTo(h * 0.1, -h * 0.08); c.lineTo(h * 0.1, 0); c.stroke();
+    }
+
     // Draw buildings in the interior view
     // ── 3D Buildings with perspective ──
     _drawTerritoryBuildings3D(c, W, H, tv, horizon) {
         const blds = tv.buildings || [];
+        const scrollX = tv.scrollX || 0;
+        const scrollY = tv.scrollY || 0;
         // Sort by y-position (far first for painter's algorithm)
         const sorted = [...blds].sort((a, b) => a.y - b.y);
         for (const b of sorted) {
-            const bx = b.x * W, by = horizon + b.y * (H - horizon) * 0.7;
             const depth = b.y; // 0=far, 1=near
+            const parallaxX = scrollX * (0.2 + depth * 0.8);
+            const parallaxY = scrollY * (0.1 + depth * 0.3);
+            const bx = b.x * W + parallaxX, by = horizon + b.y * (H - horizon) * 0.7 + parallaxY;
             const scale = (1.2 + depth * 1.5) * (b.size || 1);
-            this._drawBuilding3D(c, bx, by, b.type, scale, tv.time);
+            // Pass extra info for enhanced rendering
+            const _emp = this.g.empires[this.g.ts[tv.tid]?.owner];
+            const _empColor = _emp ? _emp.color : '#888';
+            const _timeOfDay = (tv.time % 600) / 600;
+            const _isNight = _timeOfDay >= 0.75 || _timeOfDay < 0.1;
+            this._drawBuilding3D(c, bx, by, b.type, scale, tv.time, _empColor, _isNight);
         }
     }
 
-    _drawBuilding3D(c, x, y, type, scale, time) {
+    _drawBuilding3D(c, x, y, type, scale, time, empireColor, isNight) {
+        const _ec = empireColor || '#888';
+        const _night = isNight || false;
         const s = scale * 30;
+        // Command center is larger and more prominent
+        const _s = type === 'command_center' ? s * 1.3 : s;
         c.save(); c.translate(x, y);
 
         // Shadow on ground
@@ -7131,10 +8487,28 @@ export class Renderer {
                     c.arc(-s*0.7 + i*s*0.35, s*0.4, s*0.12, 0, Math.PI*2);
                     c.fill();
                 }
+                // Chimney smoke (wooden building detail)
+                c.fillStyle = 'rgba(140,100,60,0.7)';
+                c.fillRect(-s*0.6, -s*0.85, s*0.15, s*0.35);
+                for (let si = 0; si < 3; si++) {
+                    const smokeY = -s*0.85 - si * s*0.3 - (time * 0.02 % s*0.3);
+                    const smokeX = -s*0.55 + Math.sin(time * 0.01 + si * 1.5) * s*0.15;
+                    const smokeR = s*0.08 + si * s*0.05;
+                    c.fillStyle = `rgba(180,180,180,${0.2 - si * 0.06})`;
+                    c.beginPath(); c.arc(smokeX, smokeY, smokeR, 0, Math.PI * 2); c.fill();
+                }
+                // Lit window at night
+                if (_night) {
+                    c.fillStyle = 'rgba(255,220,100,0.7)';
+                    c.fillRect(-s*0.58, -s*0.35, s*0.25, s*0.2);
+                    const glow = c.createRadialGradient(-s*0.45, -s*0.25, 2, -s*0.45, -s*0.25, s*0.3);
+                    glow.addColorStop(0, 'rgba(255,220,100,0.15)'); glow.addColorStop(1, 'rgba(255,220,100,0)');
+                    c.fillStyle = glow; c.fillRect(-s*0.8, -s*0.5, s*0.7, s*0.5);
+                }
                 break;
             }
             case 'command_center': {
-                // Large HQ building with communications array
+                // Large HQ building with communications array — uses _s for larger size
                 // Main building front (concrete & steel)
                 c.fillStyle = 'rgba(90,95,100,0.9)';
                 c.fillRect(-s*1.2, -s*0.7, s*2.4, s*1.2);
@@ -7180,9 +8554,35 @@ export class Renderer {
                 c.fillStyle = 'rgba(160,160,160,0.5)';
                 c.fillRect(-s*0.22, -s*0.05, s*0.06, s*0.06);
                 c.fillRect(s*0.16, -s*0.05, s*0.06, s*0.06);
-                // Star insignia
-                c.fillStyle = 'rgba(200,180,50,0.5)';
-                c.beginPath(); c.arc(-s*0.7, -s*0.5, s*0.12, 0, Math.PI*2); c.fill();
+                // Star insignia (empire-colored gold accent)
+                c.fillStyle = _ec; c.globalAlpha = 0.6;
+                c.beginPath(); c.arc(-s*0.7, -s*0.5, s*0.14, 0, Math.PI*2); c.fill();
+                c.fillStyle = 'rgba(255,215,0,0.4)';
+                c.beginPath(); c.arc(-s*0.7, -s*0.5, s*0.08, 0, Math.PI*2); c.fill();
+                c.globalAlpha = 1;
+                // Empire flag on rooftop
+                c.strokeStyle = 'rgba(120,120,120,0.8)'; c.lineWidth = 1.5;
+                c.beginPath(); c.moveTo(-s*0.4, -s*1.2); c.lineTo(-s*0.4, -s*1.9); c.stroke();
+                const flagWave = Math.sin(time * 0.04) * s * 0.04;
+                c.fillStyle = _ec; c.globalAlpha = 0.8;
+                c.beginPath(); c.moveTo(-s*0.4, -s*1.9);
+                c.quadraticCurveTo(-s*0.15 + flagWave, -s*1.85, -s*0.15, -s*1.7);
+                c.lineTo(-s*0.4, -s*1.65); c.closePath(); c.fill();
+                c.globalAlpha = 1;
+                // Gold trim along top
+                c.fillStyle = 'rgba(218,165,32,0.35)';
+                c.fillRect(-s*1.0, -s*1.22, s*2.0, s*0.04);
+                // Lit windows at night (yellow glow)
+                if (_night) {
+                    c.fillStyle = 'rgba(255,220,100,0.65)';
+                    for (let wi = 0; wi < 4; wi++) {
+                        c.fillRect(-s*0.85 + wi*s*0.5, -s*1.05, s*0.25, s*0.15);
+                    }
+                    // Glow effect
+                    const nightGlow = c.createRadialGradient(0, -s*0.8, s*0.5, 0, -s*0.8, s*2);
+                    nightGlow.addColorStop(0, 'rgba(255,220,100,0.08)'); nightGlow.addColorStop(1, 'rgba(255,220,100,0)');
+                    c.fillStyle = nightGlow; c.fillRect(-s*2, -s*2.5, s*4, s*3);
+                }
                 break;
             }
             case 'supply_depot': {
@@ -7231,6 +8631,11 @@ export class Renderer {
                 c.fillStyle = 'rgba(50,50,50,0.7)';
                 c.beginPath(); c.arc(-s*1.0, s*0.4, s*0.08, 0, Math.PI*2); c.fill();
                 c.beginPath(); c.arc(-s*0.9, s*0.4, s*0.08, 0, Math.PI*2); c.fill();
+                // Wooden barrel detail
+                c.fillStyle = 'rgba(139,90,43,0.7)';
+                c.beginPath(); c.ellipse(s*0.5, s*0.15, s*0.12, s*0.15, 0, 0, Math.PI*2); c.fill();
+                c.strokeStyle = 'rgba(100,65,30,0.4)'; c.lineWidth = 0.8;
+                c.beginPath(); c.ellipse(s*0.5, s*0.08, s*0.12, s*0.03, 0, 0, Math.PI*2); c.stroke();
                 break;
             }
             case 'watchtower': {
@@ -7439,6 +8844,8 @@ export class Renderer {
     // ── 3D Empire-Specific Soldiers ──
     _drawTerritorySoldiers3D(c, W, H, tv, horizon) {
         const soldiers = tv.soldiers || [];
+        const scrollX = tv.scrollX || 0;
+        const scrollY = tv.scrollY || 0;
         const emp = this.g.empires[this.g.ts[tv.tid]?.owner];
         const eid = emp ? emp.id : '';
         const empireColor = emp ? emp.color : '#888';
@@ -7460,10 +8867,12 @@ export class Renderer {
 
         const sorted = [...soldiers].sort((a, b) => a.y - b.y);
         for (const s of sorted) {
-            const sx = s.x * W;
-            const sy = horizon + s.y * (H - horizon) * 0.65;
+            const parallaxX = scrollX * (0.2 + s.y * 0.8);
+            const parallaxY = scrollY * (0.1 + s.y * 0.3);
+            const sx = s.x * W + parallaxX;
+            const sy = horizon + s.y * (H - horizon) * 0.65 + parallaxY;
             const depth = s.y;
-            const sc = (1.8 + depth * 2.5) * (s.size || 1);
+            const sc = (2.7 + depth * 3.75) * (s.size || 1); // 50% larger
             const flip = s.dir || 1;
             const lp = Math.sin(s.frame * 0.1) * 2;
             const br = Math.sin(s.frame * 0.05) * 0.5;
@@ -7494,6 +8903,10 @@ export class Renderer {
             // Body — tactical vest (empire-specific camo color)
             c.fillStyle = cost.armor; c.globalAlpha = 0.9;
             c.fillRect(-3.5*sc, -sc*2+br, 7*sc, sc*4.2);
+            // Empire color accent stripe on chest
+            c.fillStyle = empireColor; c.globalAlpha = 0.5;
+            c.fillRect(-3.5*sc, -sc*0.3+br, 7*sc, sc*0.6);
+            c.globalAlpha = 1;
             // Vest plate carrier (darker center)
             c.fillStyle = 'rgba(30,30,30,0.4)';
             c.fillRect(-2*sc, -sc*1.5+br, 4*sc, sc*3.2);
@@ -7767,11 +9180,13 @@ export class Renderer {
         const s = this.g.ts[tid];
         if (!s || s.owner !== this.g.player) return; // Only show for owned territories
 
+        const scrollX = tv.scrollX || 0;
+        const scrollY = tv.scrollY || 0;
         const emp = this.g.empires[this.g.player];
         const time = tv.time;
 
-        // Position: bottom-left area, standing prominently
-        const ax = W * 0.12, ay = horizon + (H - horizon) * 0.78;
+        // Position: bottom-left area, standing prominently (with parallax)
+        const ax = W * 0.12 + scrollX * 0.9, ay = horizon + (H - horizon) * 0.78 + scrollY * 0.4;
         const scale = 2.2;
 
         // Ground shadow
@@ -7899,17 +9314,6 @@ export class Renderer {
             { id: 'story', icon: '\uD83D\uDCDC', label: 'Story' },
             { id: 'manage', icon: '\u2699\uFE0F', label: 'Manage' },
         ];
-        // Add online-only tabs when in online mode
-        const isOnline = g._gameMode === 'online';
-        if (isOnline) {
-            baseTabs.push(
-                { id: 'chat', icon: '\uD83D\uDCAC', label: 'Chat', online: true },
-                { id: 'alliance', icon: '\uD83E\uDD1D', label: 'Alliance', online: true },
-                { id: 'trade', icon: '\uD83D\uDCE6', label: 'Trade', online: true },
-                { id: 'spy', icon: '\uD83D\uDD75\uFE0F', label: 'Spy', online: true },
-                { id: 'diplomacy', icon: '\uD83C\uDFAF', label: 'Diplo', online: true },
-            );
-        }
         const tabs = baseTabs;
         const tabW = tabs.length > 7 ? 75 : 90, tabH = 36, tabY = 62, gap = 4;
         const totalW = tabs.length * tabW + (tabs.length - 1) * gap;
@@ -9506,7 +10910,7 @@ export class Renderer {
                 enemyBullets: [],   // enemy bullets
                 grassBlades: [],
                 buildings: [],
-                weaponTier: s.weapon || 0,
+                weaponTier: this._weaponTier(s.weapon),
                 // Manual control state (Free Fire style)
                 mode: 'manual',     // manual | auto
                 emperor: {

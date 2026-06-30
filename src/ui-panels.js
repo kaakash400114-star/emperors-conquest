@@ -49,7 +49,7 @@ function _btn(c, g, x, y, w, h, text, color = '#ffd700', enabled = true) {
 
 function _backBtn(c, g) {
   _btn(c, g, 12, 10, 80, 32, '← Back', '#aaa');
-  g.btns.push({ rect: { x: 12, y: 10, w: 80, h: 32 }, fn: () => { g.state = 'playing'; g.phase = 'select'; g.sel = null; } });
+  g.btns.push({ label: 'Back', rect: { x: 12, y: 10, w: 80, h: 32 }, fn: () => { g.state = 'playing'; g.phase = 'select'; g.sel = null; } });
 }
 
 function _row(c, x, y, w, h, label, value, color = '#fff') {
@@ -604,6 +604,20 @@ export function drawProfile(c, g) {
 // ═══════════════════════════════════════════════════════════════
 //  TERRITORY INTERIOR VIEW (when you click a territory)
 // ═══════════════════════════════════════════════════════════════
+// ── Territory color themes per continent/region ──
+const TERRITORY_THEMES = {
+  'Asia': { headerGrad: ['#FF9933', '#FFFFFF33', '#138808'], accent: '#FF9933', bg: '#0d0a06', cardBg: 'rgba(255,153,51,0.06)', border: 'rgba(255,153,51,0.25)' },
+  'Europe': { headerGrad: ['#003399', '#FFD70033'], accent: '#003399', bg: '#06080d', cardBg: 'rgba(0,51,153,0.06)', border: 'rgba(0,51,153,0.25)' },
+  'Africa': { headerGrad: ['#009639', '#F77F0033'], accent: '#009639', bg: '#060d08', cardBg: 'rgba(0,150,57,0.06)', border: 'rgba(0,150,57,0.25)' },
+  'North America': { headerGrad: ['#B22234', '#3C3B6E33'], accent: '#B22234', bg: '#0d0608', cardBg: 'rgba(178,34,52,0.06)', border: 'rgba(178,34,52,0.25)' },
+  'South America': { headerGrad: ['#009C3B', '#FFDF0033'], accent: '#009C3B', bg: '#060d08', cardBg: 'rgba(0,156,59,0.06)', border: 'rgba(0,156,59,0.25)' },
+  'Oceania': { headerGrad: ['#00008B', '#FFD70033'], accent: '#00008B', bg: '#06060d', cardBg: 'rgba(0,0,139,0.06)', border: 'rgba(0,0,139,0.25)' },
+};
+function _getTheme(t, country) {
+  const region = country?.region || t?.region || 'Asia';
+  return TERRITORY_THEMES[region] || TERRITORY_THEMES['Asia'];
+}
+
 export function drawTerritoryInterior(c, g) {
   if (!g._terrView) return;
   const tid = g._terrView.tid;
@@ -612,265 +626,480 @@ export function drawTerritoryInterior(c, g) {
   const emp = g.empires[g.player];
   if (!t || !ts || !emp) return;
 
-  // Country data for flag/name
   const country = g._countryMode ? COUNTRIES[tid] : null;
   const territoryName = country ? country.name : t.name;
   const territoryFlag = country ? country.flag : '';
+  const tab = g._terrView.sub || null;
+  const theme = _getTheme(t, country);
 
-  const tab = g._terrView.sub || null; // null=overview, 'build', 'soldiers', 'manage'
-
-  // Dark background
-  c.fillStyle = '#0a0e14';
+  // ── Themed dark background with subtle gradient ──
+  const bgGr = c.createRadialGradient(g.W / 2, g.H / 2, 50, g.W / 2, g.H / 2, g.W * 0.7);
+  bgGr.addColorStop(0, theme.bg);
+  bgGr.addColorStop(1, '#050508');
+  c.fillStyle = bgGr;
   c.fillRect(0, 0, g.W, g.H);
 
-  // Header
-  c.fillStyle = 'rgba(255,215,0,0.1)';
-  c.fillRect(0, 0, g.W, 52);
-  c.strokeStyle = 'rgba(255,215,0,0.3)'; c.lineWidth = 1;
-  c.beginPath(); c.moveTo(0, 52); c.lineTo(g.W, 52); c.stroke();
-  c.font = 'bold 18px Georgia, serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.fillStyle = '#ffd700';
-  c.fillText(`${territoryFlag} ${territoryName}`, g.W / 2, 26);
+  // ── Themed header bar ──
+  const hGr = c.createLinearGradient(0, 0, g.W, 0);
+  hGr.addColorStop(0, theme.headerGrad[0] + '20');
+  hGr.addColorStop(0.5, theme.headerGrad[1] || 'rgba(255,255,255,0.08)');
+  hGr.addColorStop(1, theme.headerGrad[0] + '10');
+  c.fillStyle = hGr;
+  c.fillRect(0, 0, g.W, 56);
+  c.strokeStyle = theme.accent + '50';
+  c.lineWidth = 1;
+  c.beginPath(); c.moveTo(0, 56); c.lineTo(g.W, 56); c.stroke();
+
+  // Empire color stripe at very top
+  c.fillStyle = emp.color || '#ffd700';
+  c.fillRect(0, 0, g.W, 3);
+
+  // Territory name with flag
+  c.font = 'bold 20px Georgia, serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = '#fff';
+  c.save();
+  c.shadowColor = 'rgba(0,0,0,0.6)'; c.shadowBlur = 4;
+  c.fillText(`${territoryFlag} ${territoryName}`, g.W / 2, 28);
+  c.restore();
 
   // Back button
-  _btn(c, g, 12, 10, 80, 32, '← Map', '#aaa');
-  g.btns.push({ rect: { x: 12, y: 10, w: 80, h: 32 }, fn: () => { g._exitTerritoryView(); } });
+  _btn(c, g, 12, 12, 80, 32, '← Map', theme.accent);
+  g.btns.push({ label: 'Back', rect: { x: 12, y: 12, w: 80, h: 32 }, fn: () => { g._exitTerritoryView(); } });
 
-  // Territory info bar (below header)
+  // ── Territory info bar ──
   c.fillStyle = 'rgba(0,0,0,0.5)';
-  c.beginPath(); c.roundRect(100, 58, g.W - 200, 30, 4); c.fill();
+  c.beginPath(); c.roundRect(100, 62, g.W - 200, 32, 6); c.fill();
+  c.strokeStyle = theme.border; c.lineWidth = 1;
+  c.beginPath(); c.roundRect(100, 62, g.W - 200, 32, 6); c.stroke();
   const ownerName = ts.owner >= 0 ? (EMPIRES[ts.owner]?.name || '?') : 'Neutral';
   const ownerCol = ts.owner >= 0 ? (EMPIRES[ts.owner]?.color || '#888') : '#888';
-  c.font = '11px sans-serif'; c.textAlign = 'left'; c.textBaseline = 'middle';
+  c.font = '11px "Segoe UI", sans-serif'; c.textAlign = 'left'; c.textBaseline = 'middle';
   c.fillStyle = ownerCol;
-  c.fillText(`${ownerName} | Terrain: ${t.terrain} | Troops: ${ts.troops} | 💰${emp.coins}`, 112, 73);
+  c.fillText(`${ownerName} · ${t.terrain || 'Plains'} · ⚔${ts.troops}`, 112, 78);
+  c.textAlign = 'right'; c.fillStyle = '#ffd700';
+  c.fillText(`💰 ${emp.coins}`, g.W - 112, 78);
 
-  // Tab buttons
+  // ── Tab bar with themed colors ──
   const tabs = [
     { label: '📋 Overview', id: null, color: '#ffd700' },
-    { label: '🏗️ Build', id: 'build', color: '#0a0' },
-    { label: '⚔️ Soldiers', id: 'soldiers', color: '#f80' },
-    { label: '⚙️ Manage', id: 'manage', color: '#08f' },
+    { label: '🏗️ Build', id: 'build', color: '#34d399' },
+    { label: '⚔️ Soldiers', id: 'soldiers', color: '#f97316' },
+    { label: '🧪 Upgrade', id: 'upgrade', color: '#a78bfa' },
+    { label: '⚙️ Manage', id: 'manage', color: '#60a5fa' },
+    { label: '🏰 Dungeon', id: 'dungeon', color: '#ec4899' },
   ];
-  const tabW = 90, tabH = 30, tabGap = 4;
+  const tabW = 82, tabH = 32, tabGap = 4;
   const tabTotalW = tabs.length * (tabW + tabGap) - tabGap;
   const tabStartX = (g.W - tabTotalW) / 2;
-  const tabY = 94;
+  const tabY = 100;
   for (let i = 0; i < tabs.length; i++) {
     const tb = tabs[i];
     const tx = tabStartX + i * (tabW + tabGap);
     const active = tab === tb.id;
-    c.fillStyle = active ? tb.color + '33' : 'rgba(255,255,255,0.05)';
-    c.beginPath(); c.roundRect(tx, tabY, tabW, tabH, 4); c.fill();
-    if (active) { c.strokeStyle = tb.color; c.lineWidth = 1; c.beginPath(); c.roundRect(tx, tabY, tabW, tabH, 4); c.stroke(); }
-    c.font = '11px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillStyle = active ? tb.color : '#888';
+    c.fillStyle = active ? tb.color + '25' : 'rgba(255,255,255,0.04)';
+    c.beginPath(); c.roundRect(tx, tabY, tabW, tabH, 6); c.fill();
+    if (active) {
+      c.strokeStyle = tb.color; c.lineWidth = 1.5;
+      c.beginPath(); c.roundRect(tx, tabY, tabW, tabH, 6); c.stroke();
+      // Active indicator dot
+      c.beginPath(); c.arc(tx + tabW / 2, tabY + tabH - 2, 2, 0, Math.PI * 2);
+      c.fillStyle = tb.color; c.fill();
+    } else {
+      c.strokeStyle = 'rgba(255,255,255,0.06)'; c.lineWidth = 1;
+      c.beginPath(); c.roundRect(tx, tabY, tabW, tabH, 6); c.stroke();
+    }
+    c.font = '11px "Segoe UI", sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = active ? tb.color : '#666';
     c.fillText(tb.label, tx + tabW / 2, tabY + tabH / 2);
-    g.btns.push({ rect: { x: tx, y: tabY, w: tabW, h: tabH }, fn: () => { g._terrView.sub = tb.id; } });
+    g.btns.push({ label: tb.label, rect: { x: tx, y: tabY, w: tabW, h: tabH }, fn: () => { g._terrView.sub = tb.id; } });
   }
 
-  // Content area
+  // Content area with scroll
   const contentY = tabY + tabH + 10;
   const contentH = g.H - contentY - 10;
+  const scrollY = g._terrView._scrollY || 0;
+
+  _scrollClip(c, 10, contentY, g.W - 20, contentH);
 
   if (!tab || tab === 'overview') {
-    _drawOverviewTab(c, g, tid, t, ts, emp, contentY, contentH);
+    _drawOverviewTab(c, g, tid, t, ts, emp, contentY, contentH, theme, scrollY);
   } else if (tab === 'build') {
-    _drawBuildTab(c, g, tid, t, ts, emp, contentY, contentH);
+    _drawBuildTab(c, g, tid, t, ts, emp, contentY, contentH, theme, scrollY);
   } else if (tab === 'soldiers') {
-    _drawSoldiersTab(c, g, tid, t, ts, emp, contentY, contentH);
+    _drawSoldiersTab(c, g, tid, t, ts, emp, contentY, contentH, theme, scrollY);
+  } else if (tab === 'upgrade') {
+    _drawUpgradeTab(c, g, tid, t, ts, emp, contentY, contentH, theme, scrollY);
   } else if (tab === 'manage') {
-    _drawManageTab(c, g, tid, t, ts, emp, contentY, contentH);
+    _drawManageTab(c, g, tid, t, ts, emp, contentY, contentH, theme, scrollY);
+  } else if (tab === 'dungeon') {
+    _drawDungeonTab(c, g, tid, t, ts, emp, contentY, contentH, theme, scrollY);
+  }
+
+  _scrollUnclip(c);
+}
+
+function _drawDungeonTab(c, g, tid, t, ts, emp, y, h, theme, scrollY) {
+  const sy = y + scrollY;
+  c.font = 'bold 16px Georgia, serif'; c.textAlign = 'left'; c.fillStyle = theme.accent;
+  c.fillText('🏰 Ancient Dungeon & Crypts', 20, sy + 20);
+
+  // Show which emperor awaits as boss
+  const bossIndex = tid % 20; // matches DUNGEON_BOSSES length
+  const bossNames = [
+    'Emperor Ashoka','Julius Caesar','Genghis Khan','Sultan Suleiman','Queen Victoria',
+    'Napoleon Bonaparte','Emperor Meiji','Otto von Bismarck','Catherine the Great','Pharaoh Ramses II',
+    'Qin Shi Huang','Montezuma II','King Shaka','Emperor Justinian','Cyrus the Great',
+    'Alexander the Great','Attila the Hun','Charlemagne','Timur the Lame','Saladin'
+  ];
+  c.font = '12px Georgia, serif'; c.fillStyle = '#ff9966';
+  c.fillText(`👑 Boss: ${bossNames[bossIndex]} awaits in the throne room!`, 32, sy + 38);
+
+  // Atmospheric dungeon box
+  const boxGr = c.createLinearGradient(20, sy + 48, 20, sy + 148);
+  boxGr.addColorStop(0, 'rgba(120,30,80,0.12)');
+  boxGr.addColorStop(1, 'rgba(0,0,0,0.3)');
+  c.fillStyle = boxGr;
+  c.beginPath(); c.roundRect(20, sy + 48, g.W - 40, 100, 10); c.fill();
+  c.strokeStyle = 'rgba(155, 89, 182,0.4)'; c.lineWidth = 1;
+  c.beginPath(); c.roundRect(20, sy + 48, g.W - 40, 100, 10); c.stroke();
+
+  c.font = '13px "Segoe UI", sans-serif'; c.fillStyle = '#ddd';
+  c.fillText('Deep beneath the surface lies a non-Euclidean labyrinth of ancient chambers.', 32, sy + 72);
+  c.fillStyle = '#bbb';
+  c.fillText('Explore the dungeon, defeat the guards and the emperor boss, claim the treasure!', 32, sy + 92);
+  c.fillStyle = '#888';
+  c.font = '12px "Segoe UI", sans-serif';
+  c.fillText('WASD/Arrows to move, Space/Click to attack enemies.', 32, sy + 112);
+
+  // Stats
+  let ry = sy + 166;
+  c.font = 'bold 14px sans-serif'; c.fillStyle = theme.accent;
+  c.fillText('Dungeon Specifications', 20, ry); ry += 20;
+  _row(c, 20, ry, g.W - 40, 24, 'Dungeon Type', 'Non-Euclidean Labyrinth', '#a56'); ry += 28;
+  _row(c, 20, ry, g.W - 40, 24, 'Final Boss', `${bossNames[bossIndex]}`, '#ff6600'); ry += 28;
+  _row(c, 20, ry, g.W - 40, 24, 'Guards', '5–13 Hostile Units + Boss', '#e74c3c'); ry += 28;
+  _row(c, 20, ry, g.W - 40, 24, 'Traps', 'Pressure Plates, Spikes, Lava', '#d35400'); ry += 28;
+  _row(c, 20, ry, g.W - 40, 24, 'Player HP', '100 (enemies hit back!)', '#00ff66'); ry += 28;
+  _row(c, 20, ry, g.W - 40, 24, 'Potential Loot', '30–70 Gold Coins', '#f1c40f'); ry += 40;
+
+  const pulse = Math.sin(Date.now() * 0.005) * 0.15 + 0.85;
+  const canExplore = (g.renderer && typeof g.renderer._enterInterior === 'function');
+  _btn(c, g, g.W / 2 - 120, ry, 240, 42, '⚔️ EXPLORE 3D DUNGEON', '#ec4899', canExplore);
+  if (canExplore) {
+    c.strokeStyle = `rgba(236,72,153,${pulse})`;
+    c.lineWidth = 2; c.beginPath(); c.roundRect(g.W / 2 - 120, ry, 240, 42, 6); c.stroke();
+    g.btns.push({ rect: { x: g.W / 2 - 120, y: ry, w: 240, h: 42 }, fn: () => { g.renderer._enterInterior(tid); } });
+  } else {
+    c.font = '11px sans-serif'; c.fillStyle = '#c44'; c.textAlign = 'center';
+    c.fillText('3D Renderer not active or dungeon system unavailable', g.W / 2, ry + 56);
   }
 }
 
-function _drawOverviewTab(c, g, tid, t, ts, emp, y, h) {
+function _drawOverviewTab(c, g, tid, t, ts, emp, y, h, theme, scrollY) {
+  const sy = y + scrollY;
   const col1X = 20, colW = (g.W - 60) / 2;
 
-  // Left column: Resources
-  c.font = 'bold 14px sans-serif'; c.textAlign = 'left'; c.fillStyle = '#ffd700';
-  c.fillText('Resources', col1X, y + 16);
+  // ── Resources ──
+  c.font = 'bold 14px "Segoe UI", sans-serif'; c.textAlign = 'left'; c.fillStyle = theme.accent;
+  c.fillText('📊 Resources', col1X, sy + 16);
   const resIcons = { iron: '⛏️', gold: '💰', wood: '🪵', stone: '🪨', food: '🌾' };
   const prod = g.territoryData?.[tid] ? calcTerritoryProduction(t.terrain, ts.buildings || {}) : {};
-  let ry = y + 32;
+  let ry = sy + 36;
   for (const k of (RESOURCE_KEYS || ['iron', 'gold', 'wood', 'stone', 'food'])) {
-    c.fillStyle = 'rgba(255,255,255,0.03)';
-    c.beginPath(); c.roundRect(col1X, ry, colW, 28, 4); c.fill();
-    c.font = '12px sans-serif'; c.textAlign = 'left'; c.textBaseline = 'middle';
+    c.fillStyle = theme.cardBg;
+    c.beginPath(); c.roundRect(col1X, ry, colW, 30, 5); c.fill();
+    c.strokeStyle = theme.border; c.lineWidth = 0.5;
+    c.beginPath(); c.roundRect(col1X, ry, colW, 30, 5); c.stroke();
+    c.font = '12px "Segoe UI", sans-serif'; c.textAlign = 'left'; c.textBaseline = 'middle';
     c.fillStyle = '#ccc';
-    c.fillText(`${resIcons[k] || k} ${k}`, col1X + 8, ry + 14);
+    c.fillText(`${resIcons[k] || k} ${k}`, col1X + 10, ry + 15);
     c.textAlign = 'right'; c.fillStyle = '#8f8';
-    c.fillText(`+${prod[k] || 0}/turn`, col1X + colW - 8, ry + 14);
+    c.fillText(`+${prod[k] || 0}/turn`, col1X + colW - 10, ry + 15);
     c.textAlign = 'left';
-    ry += 32;
+    ry += 36;
   }
 
-  // Right column: Buildings
+  // ── Buildings ──
   const col2X = col1X + colW + 20;
-  c.font = 'bold 14px sans-serif'; c.fillStyle = '#ffd700';
-  c.fillText('Buildings', col2X, y + 16);
+  c.font = 'bold 14px "Segoe UI", sans-serif'; c.fillStyle = theme.accent;
+  c.fillText('🏗️ Buildings', col2X, sy + 16);
   const bKeys = Object.keys(ts.buildings || {});
-  let by = y + 32;
+  let by = sy + 36;
   if (bKeys.length === 0) {
-    c.font = '12px sans-serif'; c.fillStyle = '#555';
-    c.fillText('No buildings yet', col2X + 8, by + 14);
-    by += 32;
+    c.fillStyle = 'rgba(255,255,255,0.03)';
+    c.beginPath(); c.roundRect(col2X, by, colW, 30, 5); c.fill();
+    c.font = '12px "Segoe UI", sans-serif'; c.fillStyle = '#555'; c.textBaseline = 'middle';
+    c.fillText('No buildings yet — go to Build tab!', col2X + 10, by + 15);
+    by += 36;
   }
   const buildIcons = { command_center: '🏢', supply_depot: '📦', watchtower: '🗼', armory: '🔫', bunker: '🛡️', radar: '📡', outpost: '⛺' };
   for (const bk of bKeys) {
     if (ts.buildings[bk] > 0) {
-      c.fillStyle = 'rgba(255,255,255,0.03)';
-      c.beginPath(); c.roundRect(col2X, by, colW, 28, 4); c.fill();
-      c.font = '12px sans-serif'; c.textAlign = 'left'; c.textBaseline = 'middle';
+      c.fillStyle = theme.cardBg;
+      c.beginPath(); c.roundRect(col2X, by, colW, 30, 5); c.fill();
+      c.font = '12px "Segoe UI", sans-serif'; c.textAlign = 'left'; c.textBaseline = 'middle';
       c.fillStyle = '#ccc';
-      c.fillText(`${buildIcons[bk] || '🏠'} ${bk.replace(/_/g, ' ')} ×${ts.buildings[bk]}`, col2X + 8, by + 14);
-      by += 32;
+      c.fillText(`${buildIcons[bk] || '🏠'} ${bk.replace(/_/g, ' ')} ×${ts.buildings[bk]}`, col2X + 10, by + 15);
+      by += 36;
     }
   }
 
   // Fort level
-  by += 10;
-  c.font = 'bold 14px sans-serif'; c.fillStyle = '#ffd700';
-  c.fillText('Fortification', col2X, by); by += 20;
+  by += 14;
+  c.font = 'bold 14px "Segoe UI", sans-serif'; c.fillStyle = theme.accent;
+  c.fillText('🏰 Fortification', col2X, by); by += 22;
   const fortLvl = ts.fortLevel || 0;
-  const fortDef = FORT_LEVELS[fortLvl];
+  const fortDef = FORT_LEVELS?.[fortLvl];
   if (fortDef) {
-    c.font = '12px sans-serif'; c.fillStyle = '#ccc';
-    c.fillText(`🏰 Level ${fortLvl}: ${fortDef.name} (DEF +${fortDef.defBonus})`, col2X + 8, by);
+    c.fillStyle = theme.cardBg;
+    c.beginPath(); c.roundRect(col2X, by, colW, 28, 5); c.fill();
+    c.font = '12px "Segoe UI", sans-serif'; c.fillStyle = '#ccc'; c.textBaseline = 'middle';
+    c.fillText(`Level ${fortLvl}: ${fortDef.name} (DEF +${fortDef.defBonus})`, col2X + 10, by + 14);
   }
 
-  // Bottom: Action buttons
-  const actY = y + h - 50;
-  _btn(c, g, g.W / 2 - 130, actY, 120, 36, '🏗️ Go to Build', '#0a0');
-  g.btns.push({ rect: { x: g.W / 2 - 130, y: actY, w: 120, h: 36 }, fn: () => { g._terrView.sub = 'build'; } });
-  _btn(c, g, g.W / 2 + 10, actY, 120, 36, '← Back to Map', '#aaa');
-  g.btns.push({ rect: { x: g.W / 2 + 10, y: actY, w: 120, h: 36 }, fn: () => { g._exitTerritoryView(); } });
+  // ── Quick action buttons ──
+  const actY = sy + Math.max(ry, by) + 30;
+  c.fillStyle = theme.cardBg;
+  c.beginPath(); c.roundRect(20, actY, g.W - 40, 50, 8); c.fill();
+  c.strokeStyle = theme.border; c.lineWidth = 1;
+  c.beginPath(); c.roundRect(20, actY, g.W - 40, 50, 8); c.stroke();
+
+  _btn(c, g, 30, actY + 10, 120, 30, '🏗️ Build', '#34d399');
+  g.btns.push({ rect: { x: 30, y: actY + 10, w: 120, h: 30 }, fn: () => { g._terrView.sub = 'build'; } });
+  _btn(c, g, 160, actY + 10, 120, 30, '⚔️ Soldiers', '#f97316');
+  g.btns.push({ rect: { x: 160, y: actY + 10, w: 120, h: 30 }, fn: () => { g._terrView.sub = 'soldiers'; } });
+  _btn(c, g, g.W - 150, actY + 10, 120, 30, '← Back to Map', '#aaa');
+  g.btns.push({ rect: { x: g.W - 150, y: actY + 10, w: 120, h: 30 }, fn: () => { g._exitTerritoryView(); } });
 }
 
-function _drawBuildTab(c, g, tid, t, ts, emp, y, h) {
-  c.font = 'bold 14px sans-serif'; c.textAlign = 'left'; c.fillStyle = '#ffd700';
-  c.fillText('Build Structures', 20, y + 16);
+function _drawBuildTab(c, g, tid, t, ts, emp, y, h, theme, scrollY) {
+  const sy = y + scrollY;
+  c.font = 'bold 16px "Segoe UI", sans-serif'; c.textAlign = 'left'; c.fillStyle = theme.accent;
+  c.fillText('🏗️ Build Structures', 20, sy + 16);
 
   const buildList = [
-    { key: 'command_center', icon: '🏢', name: 'Command Center', cost: 25, desc: '+1 troop/turn' },
-    { key: 'supply_depot', icon: '📦', name: 'Supply Depot', cost: 15, desc: '+2 income/turn' },
-    { key: 'watchtower', icon: '🗼', name: 'Watchtower', cost: 20, desc: '+3 defense' },
-    { key: 'armory', icon: '🔫', name: 'Armory', cost: 30, desc: '+3 coins/turn' },
-    { key: 'bunker', icon: '🛡️', name: 'Bunker', cost: 20, desc: '+2 fortification' },
-    { key: 'radar', icon: '📡', name: 'Radar', cost: 35, desc: '+morale & intel' },
+    { key: 'command_center', icon: '🏢', name: 'Command Center', cost: 25, desc: '+1 troop/turn, +morale', color: '#34d399' },
+    { key: 'supply_depot', icon: '📦', name: 'Supply Depot', cost: 15, desc: '+2 income/turn, +food', color: '#60a5fa' },
+    { key: 'watchtower', icon: '🗼', name: 'Watchtower', cost: 20, desc: '+3 defense, reveals adjacent', color: '#fbbf24' },
+    { key: 'armory', icon: '🔫', name: 'Armory', cost: 30, desc: '+3 coins/turn, +attack', color: '#f87171' },
+    { key: 'bunker', icon: '🛡️', name: 'Bunker', cost: 20, desc: '+2 fortification', color: '#a78bfa' },
+    { key: 'radar', icon: '📡', name: 'Radar Station', cost: 35, desc: '+morale & intel, +scout', color: '#38bdf8' },
+    { key: 'market', icon: '🏪', name: 'Market', cost: 18, desc: '+4 gold/turn, enables trade', color: '#fcd34d' },
+    { key: 'barracks', icon: '🏕️', name: 'Barracks', cost: 22, desc: '+2 troop/turn, +training', color: '#fb923c' },
+    { key: 'wall', icon: '🧱', name: 'Fortified Wall', cost: 28, desc: '+4 defense, slows attackers', color: '#94a3b8' },
   ];
 
-  let by = y + 34;
+  let by = sy + 40;
   for (const b of buildList) {
     const count = ts.buildings?.[b.key] || 0;
     const canAfford = emp.coins >= b.cost;
     const maxed = count >= 3;
 
-    c.fillStyle = maxed ? 'rgba(50,50,50,0.3)' : 'rgba(255,255,255,0.04)';
-    c.beginPath(); c.roundRect(20, by, g.W - 40, 48, 6); c.fill();
-    if (!maxed) { c.strokeStyle = canAfford ? '#ffd700' : '#555'; c.lineWidth = 1; c.beginPath(); c.roundRect(20, by, g.W - 40, 48, 6); c.stroke(); }
+    // Card
+    c.fillStyle = maxed ? 'rgba(50,50,50,0.2)' : theme.cardBg;
+    c.beginPath(); c.roundRect(20, by, g.W - 40, 52, 8); c.fill();
+    if (!maxed) { c.strokeStyle = canAfford ? b.color + '60' : 'rgba(255,255,255,0.08)'; c.lineWidth = 1; c.beginPath(); c.roundRect(20, by, g.W - 40, 52, 8); c.stroke(); }
 
-    c.font = 'bold 13px sans-serif'; c.textAlign = 'left'; c.textBaseline = 'top';
+    c.font = 'bold 13px "Segoe UI", sans-serif'; c.textAlign = 'left'; c.textBaseline = 'top';
     c.fillStyle = maxed ? '#555' : '#fff';
-    c.fillText(`${b.icon} ${b.name} (×${count}/3)`, 32, by + 6);
-    c.font = '11px sans-serif'; c.fillStyle = '#aaa';
-    c.fillText(b.desc, 32, by + 24);
+    c.fillText(`${b.icon} ${b.name} (×${count}/3)`, 32, by + 8);
+    c.font = '11px "Segoe UI", sans-serif'; c.fillStyle = maxed ? '#444' : '#aaa';
+    c.fillText(b.desc, 32, by + 26);
 
     if (!maxed) {
       c.textAlign = 'right'; c.fillStyle = canAfford ? '#ffd700' : '#c44';
       c.fillText(`💰${b.cost}`, g.W - 100, by + 16);
       c.textAlign = 'left';
-      _btn(c, g, g.W - 90, by + 8, 60, 28, 'Build', canAfford ? '#ffd700' : '#555', canAfford);
+      _btn(c, g, g.W - 92, by + 10, 64, 30, 'Build', b.color, canAfford);
       if (canAfford) {
-        g.btns.push({ rect: { x: g.W - 90, y: by + 8, w: 60, h: 28 }, fn: () => { g._buildStructure(tid, b.key); } });
+        g.btns.push({ rect: { x: g.W - 92, y: by + 10, w: 64, h: 30 }, fn: () => { g._buildStructure(tid, b.key); } });
       }
     } else {
-      c.font = '11px sans-serif'; c.textAlign = 'right'; c.fillStyle = '#555';
-      c.fillText('MAXED', g.W - 40, by + 20);
+      c.font = 'bold 11px sans-serif'; c.textAlign = 'right'; c.fillStyle = '#555';
+      c.fillText('MAXED ✓', g.W - 36, by + 20);
       c.textAlign = 'left';
     }
-
-    by += 54;
+    by += 58;
   }
 }
 
-function _drawSoldiersTab(c, g, tid, t, ts, emp, y, h) {
-  c.font = 'bold 14px sans-serif'; c.textAlign = 'left'; c.fillStyle = '#ffd700';
-  c.fillText('Military', 20, y + 16);
+function _drawSoldiersTab(c, g, tid, t, ts, emp, y, h, theme, scrollY) {
+  const sy = y + scrollY;
+  c.font = 'bold 16px "Segoe UI", sans-serif'; c.textAlign = 'left'; c.fillStyle = theme.accent;
+  c.fillText('⚔️ Military Command', 20, sy + 16);
 
-  // Troop display
-  c.fillStyle = 'rgba(0,0,0,0.5)';
-  c.beginPath(); c.roundRect(20, y + 34, g.W - 40, 60, 8); c.fill();
-  c.font = 'bold 24px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  // Troop display card
+  c.fillStyle = theme.cardBg;
+  c.beginPath(); c.roundRect(20, sy + 34, g.W - 40, 68, 10); c.fill();
+  c.strokeStyle = theme.border; c.lineWidth = 1;
+  c.beginPath(); c.roundRect(20, sy + 34, g.W - 40, 68, 10); c.stroke();
+  c.font = 'bold 28px "Segoe UI", sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.fillStyle = '#ffd700';
-  c.fillText(`⚔️ ${ts.troops} Troops`, g.W / 2, y + 54);
-  c.font = '12px sans-serif'; c.fillStyle = '#aaa';
-  c.fillText(`Defense: ${t.def} base + ${(ts.fortLevel || 0) * 2} fort`, g.W / 2, y + 78);
+  c.fillText(`⚔️ ${ts.troops} Troops`, g.W / 2, sy + 56);
+  c.font = '12px "Segoe UI", sans-serif'; c.fillStyle = '#aaa';
+  c.fillText(`Defense: ${t.def || 0} base + ${(ts.fortLevel || 0) * 2} fort`, g.W / 2, sy + 82);
 
-  // Recruit button
-  const recruitY = y + 110;
-  _btn(c, g, g.W / 2 - 100, recruitY, 200, 36, `👤 Recruit (+5 troops, 10💰)`, '#0a0', emp.coins >= 10);
+  // Recruit
+  const recruitY = sy + 118;
+  _btn(c, g, 20, recruitY, g.W - 40, 40, `👤 Recruit 5 Troops (💰10)`, '#34d399', emp.coins >= 10);
   if (emp.coins >= 10) {
-    g.btns.push({ rect: { x: g.W / 2 - 100, y: recruitY, w: 200, h: 36 }, fn: () => {
+    g.btns.push({ rect: { x: 20, y: recruitY, w: g.W - 40, h: 40 }, fn: () => {
       emp.coins -= 10;
       ts.troops += 5;
-      g._log(`Recruited 5 troops at ${territoryName}`);
+      g._log(`Recruited 5 troops`);
+      if (g.sfx && typeof g.sfx.recruit === 'function') g.sfx.recruit();
     } });
   }
 
-  // Attack button (if adjacent to enemy)
-  const adjTids = t.adj || [];
-  let hasEnemy = false;
-  for (const adjId of adjTids) {
-    const adjTs = g.ts[adjId];
-    if (adjTs && adjTs.owner !== g.player) { hasEnemy = true; break; }
-  }
-  if (hasEnemy) {
-    const atkY = recruitY + 50;
-    _btn(c, g, g.W / 2 - 100, atkY, 200, 36, '⚔️ Attack Neighbor', '#c44', ts.troops > 3);
-    if (ts.troops > 3) {
-      g.btns.push({ rect: { x: g.W / 2 - 100, y: atkY, w: 200, h: 36 }, fn: () => {
-        g.state = 'playing';
-        g._attackTarget = adjTids.find(id => g.ts[id]?.owner !== g.player);
-        g._attackFrom = tid;
-      } });
-    }
+  // Elite recruit
+  const eliteY = recruitY + 50;
+  _btn(c, g, 20, eliteY, g.W - 40, 40, `🦸 Recruit Elite (💰25, +3 ATK troops)`, '#fbbf24', emp.coins >= 25);
+  if (emp.coins >= 25) {
+    g.btns.push({ rect: { x: 20, y: eliteY, w: g.W - 40, h: 40 }, fn: () => {
+      emp.coins -= 25;
+      ts.troops += 3;
+      g._log(`Recruited 3 elite troops`);
+      if (g.sfx && typeof g.sfx.levelUp === 'function') g.sfx.levelUp();
+      else if (g.sfx && typeof g.sfx.recruit === 'function') g.sfx.recruit();
+    } });
   }
 
-  // Fortify button
-  const fortY = recruitY + (hasEnemy ? 100 : 50);
-  const fortCost = (ts.fortLevel || 0) + 1 * 15;
+  // Fortify
+  const fortY = eliteY + 50;
+  const fortCost = ((ts.fortLevel || 0) + 1) * 15;
   const canFort = emp.coins >= fortCost && (ts.fortLevel || 0) < 5;
-  _btn(c, g, g.W / 2 - 100, fortY, 200, 36, `🏰 Fortify (Level ${ts.fortLevel || 0}→${(ts.fortLevel || 0) + 1}, ${fortCost}💰)`, '#08f', canFort);
+  _btn(c, g, 20, fortY, g.W - 40, 40, `🏰 Fortify Lvl ${(ts.fortLevel || 0)}→${(ts.fortLevel || 0) + 1} (💰${fortCost})`, '#60a5fa', canFort);
   if (canFort) {
-    g.btns.push({ rect: { x: g.W / 2 - 100, y: fortY, w: 200, h: 36 }, fn: () => {
+    g.btns.push({ rect: { x: 20, y: fortY, w: g.W - 40, h: 40 }, fn: () => {
       emp.coins -= fortCost;
       ts.fortLevel = (ts.fortLevel || 0) + 1;
-      g._log(`Fortified ${territoryName} to level ${ts.fortLevel}`);
+      g._log(`Fortified to level ${ts.fortLevel}`);
+      if (g.sfx && typeof g.sfx.fortify === 'function') g.sfx.fortify();
     } });
+  }
+
+  // Attack button
+  const adjTids = t.adj || [];
+  let enemyTids = [];
+  for (const adjId of adjTids) {
+    const adjTs = g.ts[adjId];
+    if (adjTs && adjTs.owner !== g.player) enemyTids.push(adjId);
+  }
+  if (enemyTids.length > 0 && ts.troops > 3) {
+    const atkY = fortY + 50;
+    _btn(c, g, 20, atkY, g.W - 40, 40, `⚔️ Attack Neighbor (${enemyTids.length} enemies nearby)`, '#f87171', ts.troops > 3);
+    if (ts.troops > 3) {
+      g.btns.push({ rect: { x: 20, y: atkY, w: g.W - 40, h: 40 }, fn: () => {
+        g.state = 'playing'; g.phase = 'attack';
+        g._attackTarget = enemyTids[0]; g._attackFrom = tid;
+      } });
+    }
+
+    // Show enemy list
+    let ey = atkY + 50;
+    c.font = 'bold 13px "Segoe UI", sans-serif'; c.fillStyle = '#f87171';
+    c.fillText('Nearby Enemies:', 20, ey); ey += 22;
+    for (const eid of enemyTids.slice(0, 5)) {
+      const eTerr = g._activeTerritories?.[eid] || T(eid);
+      const eTs = g.ts[eid];
+      const eName = eTerr?.name || `Territory ${eid}`;
+      c.fillStyle = 'rgba(239,68,68,0.08)';
+      c.beginPath(); c.roundRect(20, ey, g.W - 40, 26, 4); c.fill();
+      c.font = '12px "Segoe UI", sans-serif'; c.fillStyle = '#ddd'; c.textBaseline = 'middle';
+      c.fillText(`${eName} — ⚔${eTs.troops || 0} troops`, 32, ey + 13);
+      ey += 30;
+    }
   }
 }
 
-function _drawManageTab(c, g, tid, t, ts, emp, y, h) {
-  c.font = 'bold 14px sans-serif'; c.textAlign = 'left'; c.fillStyle = '#ffd700';
-  c.fillText('Territory Management', 20, y + 16);
+function _drawUpgradeTab(c, g, tid, t, ts, emp, y, h, theme, scrollY) {
+  const sy = y + scrollY;
+  c.font = 'bold 16px "Segoe UI", sans-serif'; c.textAlign = 'left'; c.fillStyle = theme.accent;
+  c.fillText('🧪 Upgrades & Research', 20, sy + 16);
+
+  const upgradeList = [
+    { id: 'iron_tools', icon: '⚒️', name: 'Iron Tools', desc: '+20% resource production', cost: 20, req: { iron: 10 }, color: '#94a3b8' },
+    { id: 'irrigation', icon: '💧', name: 'Irrigation', desc: '+30% food production', cost: 25, req: { food: 15 }, color: '#22d3ee' },
+    { id: 'fortify_walls', icon: '🧱', name: 'Stone Walls', desc: '+5 defense to territory', cost: 30, req: { stone: 10 }, color: '#a78bfa' },
+    { id: 'war_training', icon: '🎯', name: 'War Training', desc: '+15% attack power', cost: 35, req: { iron: 15 }, color: '#f87171' },
+    { id: 'trade_routes', icon: '🛤️', name: 'Trade Routes', desc: '+10 gold/turn', cost: 40, req: { gold: 20 }, color: '#fbbf24' },
+    { id: 'medic_camp', icon: '⚕️', name: 'Medic Camp', desc: '+3 troop recovery/turn', cost: 30, req: { food: 10 }, color: '#34d399' },
+    { id: 'spy_network', icon: '🕵️', name: 'Spy Network', desc: 'Reveal enemy troop counts', cost: 45, req: { gold: 25 }, color: '#818cf8' },
+    { id: 'siege_workshop', icon: '💣', name: 'Siege Workshop', desc: '+25% siege damage', cost: 50, req: { iron: 20 }, color: '#fb923c' },
+  ];
+
+  const purchased = ts.upgrades || [];
+
+  let uy = sy + 40;
+  for (const u of upgradeList) {
+    const owned = purchased.includes(u.id);
+    const canAfford = emp.coins >= u.cost && !owned;
+
+    c.fillStyle = owned ? 'rgba(52,211,153,0.08)' : theme.cardBg;
+    c.beginPath(); c.roundRect(20, uy, g.W - 40, 52, 8); c.fill();
+    if (!owned) { c.strokeStyle = canAfford ? u.color + '50' : 'rgba(255,255,255,0.06)'; c.lineWidth = 1; c.beginPath(); c.roundRect(20, uy, g.W - 40, 52, 8); c.stroke(); }
+
+    c.font = 'bold 13px "Segoe UI", sans-serif'; c.textAlign = 'left'; c.textBaseline = 'top';
+    c.fillStyle = owned ? '#34d399' : '#fff';
+    c.fillText(`${u.icon} ${u.name} ${owned ? '✓' : ''}`, 32, uy + 8);
+    c.font = '11px "Segoe UI", sans-serif'; c.fillStyle = owned ? '#34d39980' : '#aaa';
+    c.fillText(u.desc, 32, uy + 26);
+
+    if (!owned) {
+      c.textAlign = 'right'; c.fillStyle = canAfford ? '#ffd700' : '#c44';
+      c.fillText(`💰${u.cost}`, g.W - 100, uy + 16);
+      c.textAlign = 'left';
+      _btn(c, g, g.W - 92, uy + 10, 64, 30, 'Buy', u.color, canAfford);
+      if (canAfford) {
+        g.btns.push({ rect: { x: g.W - 92, y: uy + 10, w: 64, h: 30 }, fn: () => {
+          emp.coins -= u.cost;
+          if (!ts.upgrades) ts.upgrades = [];
+          ts.upgrades.push(u.id);
+          g._log(`Researched ${u.name}!`);
+          if (g.sfx && typeof g.sfx.buy === 'function') g.sfx.buy();
+        } });
+      }
+    }
+    uy += 58;
+  }
+}
+
+function _drawManageTab(c, g, tid, t, ts, emp, y, h, theme, scrollY) {
+  const sy = y + scrollY;
+  c.font = 'bold 16px "Segoe UI", sans-serif'; c.textAlign = 'left'; c.fillStyle = theme.accent;
+  c.fillText('⚙️ Territory Management', 20, sy + 16);
 
   // Troop transfer
   const ownedTids = emp.tids || [];
-  let my = y + 40;
-  c.font = '12px sans-serif'; c.fillStyle = '#aaa';
-  c.fillText('Transfer troops to another territory:', 20, my); my += 24;
+  let my = sy + 40;
+  c.font = '13px "Segoe UI", sans-serif'; c.fillStyle = '#aaa';
+  c.fillText('Transfer half your troops to another territory:', 20, my); my += 26;
 
   for (const otherTid of ownedTids) {
     if (otherTid === tid) continue;
     const otherT = g._activeTerritories?.[otherTid] || T(otherTid);
-    _btn(c, g, 20, my, g.W - 40, 26, `Send troops to ${otherT.name} (has ${g.ts[otherTid].troops})`, '#08f', ts.troops > 1);
-    g.btns.push({ rect: { x: 20, y: my, w: g.W - 40, h: 26 }, fn: () => {
+    const otherName = otherT?.name || `Territory ${otherTid}`;
+    c.fillStyle = theme.cardBg;
+    c.beginPath(); c.roundRect(20, my, g.W - 40, 32, 6); c.fill();
+    c.font = '12px "Segoe UI", sans-serif'; c.fillStyle = '#ccc'; c.textBaseline = 'middle';
+    c.fillText(`➡️ ${otherName} (⚔${g.ts[otherTid].troops})`, 32, my + 16);
+    c.textAlign = 'right'; c.fillStyle = '#60a5fa';
+    c.fillText(`Send ${Math.max(1, Math.floor(ts.troops / 2))}`, g.W - 36, my + 16);
+    c.textAlign = 'left';
+    g.btns.push({ rect: { x: 20, y: my, w: g.W - 40, h: 32 }, fn: () => {
       const moveCount = Math.max(1, Math.floor(ts.troops / 2));
       ts.troops -= moveCount;
       g.ts[otherTid].troops += moveCount;
-      g._log(`Moved ${moveCount} troops to ${otherT.name}`);
+      g._log(`Moved ${moveCount} troops to ${otherName}`);
+      if (g.sfx && typeof g.sfx.march === 'function') g.sfx.march();
     } });
-    my += 32;
+    my += 38;
   }
+
+  // Rename territory
+  my += 20;
+  c.font = 'bold 13px "Segoe UI", sans-serif'; c.fillStyle = theme.accent;
+  c.fillText('Customize Territory', 20, my); my += 24;
+  c.font = '12px "Segoe UI", sans-serif'; c.fillStyle = '#888';
+  c.fillText('Set a custom name for this territory (coming soon)', 20, my);
 }

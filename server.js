@@ -1,7 +1,7 @@
 // ── Emperor's Conquest — Online Multiplayer Server ──
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -10,6 +10,31 @@ const PORT = process.env.PORT || 9001;
 
 // ── Static file server ──
 const httpServer = createServer((req, res) => {
+    // ── Screenshot capture endpoint (no second port needed) ──
+    if (req.url === '/save-ss') {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+        if (req.method !== 'POST') { res.writeHead(405); res.end('Method not allowed'); return; }
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => {
+            try {
+                const { filename, data } = JSON.parse(body);
+                const buf = Buffer.from(data, 'base64');
+                const p = join(__dirname, '..', filename);
+                writeFileSync(p, buf);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true, size: buf.length }));
+            } catch(e) {
+                res.writeHead(500);
+                res.end(JSON.stringify({ error: e.message }));
+            }
+        });
+        return;
+    }
+
     let filePath = req.url === '/' ? '/index.html' : req.url;
     // Strip query params
     filePath = filePath.split('?')[0];

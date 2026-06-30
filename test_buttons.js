@@ -32,14 +32,22 @@
     log('1_MENU_BTNS', menuBtns.length > 0, 'count=' + menuBtns.length + ' labels=' + menuLabels.substring(0,200));
     
     // Find Play button
-    var playBtn = menuBtns.find(b => b.label && (b.label.includes('Play') || b.label.includes('play') || b.label.includes('START')));
+    var playBtn = menuBtns.find(b => b.label && (b.label === 'Start' || b.label === 'Play' || b.label.toLowerCase() === 'start' || b.label.toLowerCase() === 'play'));
     log('1_PLAY_BTN', !!playBtn, playBtn ? 'label=' + playBtn.label : 'NOT FOUND in: ' + menuLabels.substring(0,100));
     
     // ===== TEST 2: DIFFICULTY SCREEN =====
-    // Click Play to go to difficulty
+    // Click Play to go to mode selection, then select worldConquest
     if (playBtn) {
         playBtn.fn();
         await wait(300);
+        if (g.state === 'modeSelect') {
+            var modeBtns = await renderBtns();
+            var wcBtn = modeBtns.find(b => b.label === 'worldConquest');
+            if (wcBtn) {
+                wcBtn.fn();
+                await wait(300);
+            }
+        }
     } else {
         g.state = 'difficulty';
         await wait(300);
@@ -52,7 +60,7 @@
     
     // Find difficulty buttons
     var easyBtn = diffBtns.find(b => b.label && b.label.toLowerCase().includes('easy'));
-    var medBtn = diffBtns.find(b => b.label && b.label.toLowerCase().includes('medi'));
+    var medBtn = diffBtns.find(b => b.label && (b.label.toLowerCase().includes('medi') || b.label.toLowerCase().includes('norm')));
     var hardBtn = diffBtns.find(b => b.label && b.label.toLowerCase().includes('hard'));
     log('2_EASY_BTN', !!easyBtn, !!easyBtn ? 'found' : 'not found');
     log('2_MEDIUM_BTN', !!medBtn, !!medBtn ? 'found' : 'not found');
@@ -70,9 +78,9 @@
     log('3_SEL_BTNS', selBtns.length > 0, 'count=' + selBtns.length + ' labels=' + selLabels.substring(0,300));
     
     // Check for search, continent filters, country entries
-    var searchBtn = selBtns.find(b => b.label && b.label.toLowerCase().includes('search'));
-    var backBtn = selBtns.find(b => b.label && b.label.toLowerCase().includes('back'));
-    var conquerBtn = selBtns.find(b => b.label && b.label.toLowerCase().includes('conquer'));
+    var searchBtn = selBtns.find(b => b.label && typeof b.label === 'string' && b.label.toLowerCase().includes('search'));
+    var backBtn = selBtns.find(b => b.label && typeof b.label === 'string' && b.label.toLowerCase().includes('back'));
+    var conquerBtn = selBtns.find(b => b.label && typeof b.label === 'string' && b.label.toLowerCase().includes('conquer'));
     log('3_SEARCH_BTN', !!searchBtn || selLabels.toLowerCase().includes('search'), 'search present');
     log('3_BACK_BTN', !!backBtn, !!backBtn ? 'found' : 'not found');
     log('3_CONQUER_BTN', !!conquerBtn, !!conquerBtn ? 'found' : 'not found');
@@ -84,7 +92,7 @@
     log('4_COUNTRY_STATE', g.state === 'playing', 'state=' + g.state);
     log('4_TERRITORIES', (g._activeTerritories || []).length === 195, 'count=' + (g._activeTerritories || []).length);
     log('4_EMPIRES', (g._activeEIDs || []).length >= 2, 'count=' + (g._activeEIDs || []).length);
-    log('4_COUNTRY_MODE', g._useCountryMode === true, 'countryMode=' + g._useCountryMode);
+    log('4_COUNTRY_MODE', g._countryMode === true, 'countryMode=' + g._countryMode);
     
     // ===== TEST 5: MAP BUTTONS =====
     var mapBtns = await renderBtns();
@@ -92,11 +100,11 @@
     log('5_MAP_BTNS', mapBtns.length > 0, 'count=' + mapBtns.length + ' labels=' + mapLabels.substring(0,300));
     
     // Check toolbar buttons
-    var endTurnBtn = mapBtns.find(b => b.label && (b.label.toLowerCase().includes('end') || b.label.toLowerCase().includes('turn')));
-    var musicBtn = mapBtns.find(b => b.label && b.label.toLowerCase().includes('music'));
-    var menuBtn2 = mapBtns.find(b => b.label && b.label.toLowerCase().includes('menu'));
-    var saveBtn = mapBtns.find(b => b.label && b.label.toLowerCase().includes('save'));
-    var zoomInBtn = mapBtns.find(b => b.label && b.label.toLowerCase().includes('zoom'));
+    var endTurnBtn = mapBtns.find(b => b.label && typeof b.label === 'string' && (b.label.toLowerCase().includes('end') || b.label.toLowerCase().includes('turn')));
+    var musicBtn = mapBtns.find(b => b.label && typeof b.label === 'string' && (b.label.toLowerCase().includes('music') || b.label.toLowerCase().includes('sound')));
+    var menuBtn2 = mapBtns.find(b => b.label && typeof b.label === 'string' && b.label.toLowerCase().includes('menu'));
+    var saveBtn = mapBtns.find(b => b.label && typeof b.label === 'string' && b.label.toLowerCase().includes('save'));
+    var zoomInBtn = mapBtns.find(b => b.label && typeof b.label === 'string' && b.label.toLowerCase().includes('zoom'));
     
     log('5_END_TURN', !!endTurnBtn, !!endTurnBtn ? 'found' : 'not found');
     log('5_MUSIC', !!musicBtn, !!musicBtn ? 'found' : 'not found');
@@ -118,11 +126,11 @@
     mapBtns = await renderBtns();
     
     // Find India territory button (or any territory)
-    var terrBtn = mapBtns.find(b => b.label && b.label.toLowerCase().includes('india'));
+    var terrBtn = mapBtns.find(b => b.label && typeof b.label === 'string' && b.label.toLowerCase().includes('india'));
     log('6_INDIA_BTN', !!terrBtn, !!terrBtn ? 'found' : 'not found, trying first territory');
     
     if (!terrBtn) {
-        terrBtn = mapBtns.find(b => b.label && !b.label.toLowerCase().includes('menu') && !b.label.toLowerCase().includes('save') && !b.label.toLowerCase().includes('music') && !b.label.toLowerCase().includes('end') && !b.label.toLowerCase().includes('zoom') && !b.label.toLowerCase().includes('tech') && !b.label.toLowerCase().includes('build') && !b.label.toLowerCase().includes('siege'));
+        terrBtn = mapBtns.find(b => b.label && typeof b.label === 'string' && !b.label.toLowerCase().includes('menu') && !b.label.toLowerCase().includes('save') && !b.label.toLowerCase().includes('music') && !b.label.toLowerCase().includes('end') && !b.label.toLowerCase().includes('zoom') && !b.label.toLowerCase().includes('tech') && !b.label.toLowerCase().includes('build') && !b.label.toLowerCase().includes('siege'));
     }
     
     if (terrBtn) {
@@ -141,11 +149,11 @@
     var intLabels = intBtns.map(b => b.label || 'rect').join(',');
     log('7_INT_BTNS', intBtns.length > 0, 'count=' + intBtns.length + ' labels=' + intLabels.substring(0,300));
     
-    var intBack = intBtns.find(b => b.label && b.label.toLowerCase().includes('back'));
-    var overviewTab = intBtns.find(b => b.label && b.label.toLowerCase().includes('overview'));
-    var buildTab = intBtns.find(b => b.label && b.label.toLowerCase().includes('build'));
-    var soldiersTab = intBtns.find(b => b.label && b.label.toLowerCase().includes('soldier'));
-    var manageTab = intBtns.find(b => b.label && b.label.toLowerCase().includes('manage'));
+    var intBack = intBtns.find(b => b.label && typeof b.label === 'string' && b.label.toLowerCase().includes('back'));
+    var overviewTab = intBtns.find(b => b.label && typeof b.label === 'string' && b.label.toLowerCase().includes('overview'));
+    var buildTab = intBtns.find(b => b.label && typeof b.label === 'string' && b.label.toLowerCase().includes('build'));
+    var soldiersTab = intBtns.find(b => b.label && typeof b.label === 'string' && b.label.toLowerCase().includes('soldier'));
+    var manageTab = intBtns.find(b => b.label && typeof b.label === 'string' && b.label.toLowerCase().includes('manage'));
     
     log('7_BACK_BTN', !!intBack, !!intBack ? 'found' : 'not found');
     log('7_OVERVIEW_TAB', !!overviewTab, !!overviewTab ? 'found' : 'not found');

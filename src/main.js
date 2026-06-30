@@ -25,3 +25,5 @@ game.online = new OnlineClient(game);
 game.sound = sound;
 game.start();
 self.__game = game;
+window.__game = game;
+globalThis.__game = game;

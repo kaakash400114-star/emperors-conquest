@@ -142,6 +142,11 @@ export class Game {
         this._ambientTimer = 0;
         this.input = new Input(this);
         this.renderer = new Renderer3D(this, glCanvas);
+
+        // Store original map data for restoration when switching modes
+        this._origTerritories = [...TERRITORIES];
+        this._origEmpires = { ...EMPIRES };
+        this._origEids = [...EIDS];
     }
 
     _resize() {
@@ -224,12 +229,18 @@ export class Game {
                 const b = this._backBtnRect;
                 if (sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h) {
                     this.input.consumeClick();
+                    if (this.renderer && this.renderer._view === 'interior') {
+                        this.renderer._exitInterior();
+                        return;
+                    }
                     if (this.state === 'territory') { this.state = 'playing'; this.sel = null; return; }
                     else if (this.state === 'playing') { this._quitToMenu(); return; }
                     else { this.state = 'menu'; return; }
                 }
             }
             if (this.state === 'empireSelect') this._upEmpire();
+            else if (this.state === 'modeSelect') this._upDifficulty();
+            else if (this.state === 'countrySelect') this._upDifficulty();
             else if (this.state === 'playing') this._upPlay();
             else if (this.state === 'attack') this._upAttack();
             else if (this.state === 'combat') { /* animation plays, clicks ignored */ }
@@ -258,19 +269,11 @@ export class Game {
             if (or && sx >= or.x && sx <= or.x + or.w && sy >= or.y && sy <= or.y + or.h) {
                 this.input.consumeClick();
                 this._gameMode = 'offline';
-                this.state = 'difficulty';
+                this.state = 'modeSelect';
                 this.sfx.click();
                 return;
             }
-            // Check Online Battle button
-            const onr = this._onlineBtnRect;
-            if (onr && sx >= onr.x && sx <= onr.x + onr.w && sy >= onr.y && sy <= onr.y + onr.h) {
-                this.input.consumeClick();
-                this._gameMode = 'online';
-                this.state = 'onlineLobby';
-                this.sfx.click();
-                return;
-            }
+
             // Check Help button
             const hr = this._helpBtnRect;
             if (hr && sx >= hr.x && sx <= hr.x + hr.w && sy >= hr.y && sy <= hr.y + hr.h) {
@@ -444,6 +447,19 @@ export class Game {
 
     // ── START GAME ────────────────────────────────────────────
     _startGame(eid) {
+        // Restore original data in case we came from Country Mode
+        this._countryMode = false;
+        TERRITORIES.length = 0;
+        TERRITORIES.push(...this._origTerritories);
+        for (const key of Object.keys(EMPIRES)) {
+            delete EMPIRES[key];
+        }
+        for (const [key, value] of Object.entries(this._origEmpires)) {
+            EMPIRES[key] = value;
+        }
+        EIDS.length = 0;
+        EIDS.push(...this._origEids);
+
         this.player = eid;
         this.turn = 1;
         this.log = [];
@@ -466,7 +482,7 @@ export class Game {
         // Initialize all territories
         this.ts = {};
         for (const t of TERRITORIES) {
-            this.ts[t.id] = { owner: null, troops: 0, fort: 0, weapon: WEAPONS[1][0], buildings: {},
+            this.ts[t.id] = { owner: null, troops: 0, fort: 0, weapon: WEAPONS[1][0], buildings: { command_center: 0, supply_depot: 0, watchtower: 0, armory: 0, bunker: 0, radar: 0, market: 0, barracks: 0, wall: 0 },
                 resources: { iron: 0, gold: 0, wood: 0, stone: 0, food: 0 },
                 fortLevel: 0, builderBlocks: [] };
         }
@@ -569,6 +585,16 @@ export class Game {
         this._origT = window._T || T;
         this._origE = window._E || E;
 
+        // Mutate global shared arrays to support static imports in other modules
+        TERRITORIES.length = 0;
+        TERRITORIES.push(...territories);
+        for (const key of Object.keys(EMPIRES)) {
+            delete EMPIRES[key];
+        }
+        empires.forEach(emp => {
+            EMPIRES[emp.id] = emp;
+        });
+
         this.player = cid;
         this.turn = 1;
         this.log = [];
@@ -589,7 +615,7 @@ export class Game {
         // Initialize all 195 territories as neutral
         this.ts = {};
         for (const t of territories) {
-            this.ts[t.id] = { owner: null, troops: 0, fort: 0, weapon: WEAPONS[1][0], buildings: { command_center: 0, supply_depot: 0, watchtower: 0, armory: 0, bunker: 0, radar: 0 },
+            this.ts[t.id] = { owner: null, troops: 0, fort: 0, weapon: WEAPONS[1][0], buildings: { command_center: 0, supply_depot: 0, watchtower: 0, armory: 0, bunker: 0, radar: 0, market: 0, barracks: 0, wall: 0 },
                 resources: { iron: 0, gold: 0, wood: 0, stone: 0, food: 0 },
                 fortLevel: 0, builderBlocks: [] };
         }
@@ -679,9 +705,13 @@ export class Game {
         this._activeTerritories = territories;
         this._activeEIDs = [cid, ...aiIds];
 
+        // Update EIDS for static imports
+        EIDS.length = 0;
+        EIDS.push(cid, ...aiIds);
+
         // Patch T() and E() globally so all game code works
         window._T = (id) => this._activeTerritories?.[id] || TERRITORIES[id];
-        window._E = (id) => this.empires?.[id] || EMPIRES[id];
+        window._E = (id) => this.empires?.[id] || E(id);
 
         this.state = 'playing';
         this.renderer.startTransition('curtain');
@@ -697,7 +727,7 @@ export class Game {
 
     // Override T() and E() to use country data when in country mode
     _T(id) { return this._countryMode ? (this._activeTerritories?.[id] || null) : T(id); }
-    _E(id) { return this._countryMode ? (this.empires?.[id] || null) : E(id); }
+    _E(id) { return this._countryMode ? (this.empires?.[id] || E(id)) : E(id); }
 
     // ── INCOME ────────────────────────────────────────────────
     _income(eid) {
@@ -801,7 +831,7 @@ export class Game {
         const tName = (this._activeTerritories?.[tid] || T(tid))?.name || 'Territory';
         switch (dDef.effect) {
             case 'destroy_buildings':
-                this.ts[tid].buildings = {};
+                this.ts[tid].buildings = { command_center: 0, supply_depot: 0, watchtower: 0, armory: 0, bunker: 0, radar: 0, market: 0, barracks: 0, wall: 0 };
                 this._log(`${dDef.icon} ${dDef.name}: ${tName}'s buildings destroyed!`);
                 break;
             case 'reduce_food':
@@ -830,29 +860,7 @@ export class Game {
         }
     }
 
-    // ── Build a structure in a territory ──
-    _buildStructure(tid, buildingKey) {
-        const emp = this.empires[this.player];
-        if (!emp) return false;
-        const bDef = BUILDINGS[buildingKey];
-        if (!bDef) return false;
-        // Check ownership
-        if (this.ts[tid].owner !== this.player) return false;
-        // Check resources
-        for (const [res, cost] of Object.entries(bDef.cost)) {
-            if ((emp.resources[res] || 0) < cost) return false;
-        }
-        // Deduct cost
-        for (const [res, cost] of Object.entries(bDef.cost)) {
-            emp.resources[res] -= cost;
-        }
-        // Place building
-        this.ts[tid].buildings[buildingKey] = (this.ts[tid].buildings[buildingKey] || 0) + 1;
-        this._log(`${bDef.icon} Built ${bDef.name} in ${(this._activeTerritories?.[tid] || T(tid))?.name || 'Territory'}`);
-        addXP(this.profile, XP_REWARDS.build_structure, 'build_structure');
-        this.stats.totalBuildings++;
-        return true;
-    }
+
 
     // ── Start researching a tech ──
     _startResearch(techId) {
@@ -984,8 +992,9 @@ export class Game {
     // ── TERRITORY VIEW (Zoom Inside) ──────────────────────────
     _weaponTier(weapon) {
         if (!weapon) return 0;
+        const name = typeof weapon === 'string' ? weapon : weapon.name;
         for (const [tier, weapons] of Object.entries(WEAPONS)) {
-            if (weapons.includes(weapon)) return parseInt(tier);
+            if (weapons.some(w => w.name === name)) return parseInt(tier);
         }
         return 0;
     }
@@ -994,8 +1003,13 @@ export class Game {
         const t = this._activeTerritories?.[tid] || T(tid);
         const s = this.ts[tid];
         // Ensure buildings data exists
-        if (!s.buildings) {
-            s.buildings = { command_center: 0, supply_depot: 0, watchtower: 0, armory: 0, bunker: 0, radar: 0 };
+        if (!s.buildings || Object.keys(s.buildings).length === 0) {
+            s.buildings = { command_center: 0, supply_depot: 0, watchtower: 0, armory: 0, bunker: 0, radar: 0, market: 0, barracks: 0, wall: 0 };
+        } else {
+            const keys = ['command_center', 'supply_depot', 'watchtower', 'armory', 'bunker', 'radar', 'market', 'barracks', 'wall'];
+            for (const k of keys) {
+                if (s.buildings[k] === undefined) s.buildings[k] = 0;
+            }
         }
         // Generate soldiers for the interior view
         const soldiers = [];
@@ -1012,17 +1026,18 @@ export class Game {
         }
         // Generate visual building positions based on actual buildings + some defaults
         const visBuildings = [];
-        const bTypes = ['outpost', 'command_center', 'supply_depot', 'watchtower', 'armory', 'bunker', 'radar'];
+        const bTypes = ['outpost', 'command_center', 'supply_depot', 'watchtower', 'armory', 'bunker', 'radar', 'market', 'barracks', 'wall'];
         const bPositions = [
             { x: 0.2, y: 0.28 }, { x: 0.5, y: 0.22 }, { x: 0.75, y: 0.30 },
             { x: 0.15, y: 0.18 }, { x: 0.6, y: 0.15 }, { x: 0.85, y: 0.20 },
-            { x: 0.4, y: 0.35 },
+            { x: 0.4, y: 0.35 }, { x: 0.3, y: 0.12 }, { x: 0.7, y: 0.10 },
+            { x: 0.9, y: 0.28 }, { x: 0.05, y: 0.32 }, { x: 0.55, y: 0.38 }
         ];
         // Add default outpost
         visBuildings.push({ x: 0.2, y: 0.28, type: 'outpost', size: 2.0 });
         let pi = 1;
         for (const bt of bTypes) {
-            for (let i = 0; i < s.buildings[bt]; i++) {
+            for (let i = 0; i < (s.buildings[bt] || 0); i++) {
                 if (pi < bPositions.length) {
                     visBuildings.push({ x: bPositions[pi].x, y: bPositions[pi].y, type: bt, size: 1.8 + Math.random() * 0.5 });
                     pi++;
@@ -1033,6 +1048,7 @@ export class Game {
             tid, zoom: 0, soldiers, buildings: visBuildings, time: 0,
             sub: null, // null = raw 3D scene (soldiers, emperor, buildings); explore, shop, story, build, manage, weapons, attack, battle
             weaponTier: this._weaponTier(this.ts[tid].weapon),
+            scrollX: 0, scrollY: 0, // endless scroll offset
         };
         this.state = 'territory';
         this.sel = tid;
@@ -1054,6 +1070,14 @@ export class Game {
         if (!this._terrView) { this._exitTerritoryView(); return; }
         this._terrView.time++;
         this._terrView.zoom = Math.min(1, this._terrView.zoom + 0.04);
+
+        // Arrow key / WASD scrolling for endless terrain exploration
+        if (!this._terrView.sub) {
+            if (this.input.keys.includes('ArrowLeft') || this.input.keys.includes('a')) this._terrView.scrollX -= 3;
+            if (this.input.keys.includes('ArrowRight') || this.input.keys.includes('d')) this._terrView.scrollX += 3;
+            if (this.input.keys.includes('ArrowUp') || this.input.keys.includes('w')) this._terrView.scrollY -= 2;
+            if (this.input.keys.includes('ArrowDown') || this.input.keys.includes('s')) this._terrView.scrollY += 2;
+        }
 
         // Update soldier positions (patrol animation)
         for (const s of this._terrView.soldiers) {
@@ -1088,8 +1112,8 @@ export class Game {
     }
 
     // Building costs
-    static BUILD_COSTS = { command_center: 25, supply_depot: 15, watchtower: 20, armory: 30, bunker: 20, radar: 35 };
-    static BUILD_ICONS = { command_center: '🏢', supply_depot: '📦', watchtower: '🗼', armory: '🔫', bunker: '🛡️', radar: '📡' };
+    static BUILD_COSTS = { command_center: 25, supply_depot: 15, watchtower: 20, armory: 30, bunker: 20, radar: 35, market: 18, barracks: 22, wall: 28 };
+    static BUILD_ICONS = { command_center: '🏢', supply_depot: '📦', watchtower: '🗼', armory: '🔫', bunker: '🛡️', radar: '📡', market: '🏪', barracks: '⛺', wall: '🧱' };
     static BUILD_DESCS = {
         command_center: '+1 troop/turn bonus',
         supply_depot: '+2 income/turn',
@@ -1097,6 +1121,9 @@ export class Game {
         armory: '+3 coins/turn',
         bunker: '+2 fortification',
         radar: '+morale & intel',
+        market: '+4 gold/turn',
+        barracks: '+2 troop/turn bonus',
+        wall: '+4 defense bonus',
     };
 
     _buildStructure(tid, type) {
@@ -1104,21 +1131,29 @@ export class Game {
         const emp = this.empires[this.player];
         if (!emp || emp.coins < cost) { this.sfx.error(); this._log('Not enough coins!'); return; }
         const s = this.ts[tid];
-        if (!s.buildings) s.buildings = { command_center: 0, supply_depot: 0, watchtower: 0, armory: 0, bunker: 0, radar: 0 };
+        if (!s.buildings || Object.keys(s.buildings).length === 0) {
+            s.buildings = { command_center: 0, supply_depot: 0, watchtower: 0, armory: 0, bunker: 0, radar: 0, market: 0, barracks: 0, wall: 0 };
+        } else {
+            const keys = ['command_center', 'supply_depot', 'watchtower', 'armory', 'bunker', 'radar', 'market', 'barracks', 'wall'];
+            for (const k of keys) {
+                if (s.buildings[k] === undefined) s.buildings[k] = 0;
+            }
+        }
         // Max 3 of each type
         if (s.buildings[type] >= 3) { this.sfx.error(); this._log('Max buildings of this type reached!'); return; }
         emp.coins -= cost;
         this.undoStack.push({ action: 'build', tid, type, buildings: { ...s.buildings }, coins: emp.coins });
         s.buildings[type]++;
-        this._log(`Built ${type} at ${(this._activeTerritories?.[tid] || T(tid))?.name || 'Territory'} (-${cost} coins)`);
-        this.sfx.buy();
+        if (this.sfx && typeof this.sfx.construction === 'function') this.sfx.construction();
+        else this.sfx.buy();
         // Refresh buildings in territory view without resetting tab
         if (this._terrView) {
-            const bTypes = ['outpost', 'command_center', 'supply_depot', 'watchtower', 'armory', 'bunker', 'radar'];
+            const bTypes = ['outpost', 'command_center', 'supply_depot', 'watchtower', 'armory', 'bunker', 'radar', 'market', 'barracks', 'wall'];
             const bPositions = [
                 { x: 0.2, y: 0.28 }, { x: 0.5, y: 0.22 }, { x: 0.75, y: 0.30 },
                 { x: 0.15, y: 0.18 }, { x: 0.6, y: 0.15 }, { x: 0.85, y: 0.20 },
-                { x: 0.4, y: 0.35 },
+                { x: 0.4, y: 0.35 }, { x: 0.3, y: 0.12 }, { x: 0.7, y: 0.10 },
+                { x: 0.9, y: 0.28 }, { x: 0.05, y: 0.32 }, { x: 0.55, y: 0.38 }
             ];
             const visBuildings = [{ x: 0.2, y: 0.28, type: 'house', size: 2.0 }];
             let pi = 1;
@@ -1425,8 +1460,8 @@ export class Game {
         if (emp.coins < 15) { this.sfx.error(); this._log('Not enough coins!'); return; }
         this.undoStack.push({ action: 'fortify', tid: this.sel, fort: this.ts[this.sel].fort, coins: emp.coins });
         emp.coins -= 15; this.ts[this.sel].fort += 2;
-        this._log(`Fortified ${(this._activeTerritories?.[this.sel] || T(this.sel))?.name || 'Territory'} (+2 def permanently)`);
-        this.sfx.buy();
+        if (this.sfx && typeof this.sfx.fortify === 'function') this.sfx.fortify();
+        else this.sfx.buy();
     }
 
     _buyWeaponTier(tier) {
@@ -1678,6 +1713,21 @@ export class Game {
 
     // ── QUIT TO MENU (full reset) ──
     _quitToMenu() {
+        // Restore original data in case we came from Country Mode
+        if (this._countryMode) {
+            this._countryMode = false;
+            TERRITORIES.length = 0;
+            TERRITORIES.push(...this._origTerritories);
+            for (const key of Object.keys(EMPIRES)) {
+                delete EMPIRES[key];
+            }
+            for (const [key, value] of Object.entries(this._origEmpires)) {
+                EMPIRES[key] = value;
+            }
+            EIDS.length = 0;
+            EIDS.push(...this._origEids);
+        }
+
         this.ts = {};
         this.sel = null;
         this.turn = 0;
@@ -1791,7 +1841,7 @@ export class Game {
             };
         }
         for (const [tid, s] of Object.entries(this.ts)) {
-            data.ts[tid] = { owner: s.owner, troops: s.troops, fort: s.fort, weapon: s.weapon ? s.weapon.name : 'Sword', buildings: s.buildings || { command_center: 0, supply_depot: 0, watchtower: 0, armory: 0, bunker: 0, radar: 0 } };
+            data.ts[tid] = { owner: s.owner, troops: s.troops, fort: s.fort, weapon: s.weapon ? s.weapon.name : 'Sword', buildings: s.buildings || { command_center: 0, supply_depot: 0, watchtower: 0, armory: 0, bunker: 0, radar: 0, market: 0, barracks: 0, wall: 0 } };
         }
         localStorage.setItem('emperorsConquest_save', JSON.stringify(data));
         this._log('Game saved!');
@@ -1831,7 +1881,7 @@ export class Game {
             this.ts = {};
             for (const [tid, s] of Object.entries(data.ts)) {
                 const weapon = this._findWeaponByName(s.weapon);
-                const buildings = s.buildings || { command_center: 0, supply_depot: 0, watchtower: 0, armory: 0, bunker: 0, radar: 0 };
+                const buildings = s.buildings || { command_center: 0, supply_depot: 0, watchtower: 0, armory: 0, bunker: 0, radar: 0, market: 0, barracks: 0, wall: 0 };
                 this.ts[parseInt(tid)] = { owner: s.owner, troops: s.troops, fort: s.fort, weapon, buildings };
             }
 

@@ -539,7 +539,66 @@ export class SFX {
         // Sparkle noise
         this._playNoise(1.0, 'white', 0.04, 8000, 2);
     }); }
+
+    // 26. FOOTSTEP - soft brown noise step
+    footstep() { this._queue(() => {
+        const t = this.ctx.currentTime;
+        const dur = 0.08;
+        const src = this.ctx.createBufferSource();
+        src.buffer = this._noise(dur, 'brown');
+        if (!src.buffer) return;
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.04, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        const f = this.ctx.createBiquadFilter();
+        f.type = 'bandpass'; f.frequency.value = 250; f.Q.value = 3;
+        src.connect(f); f.connect(g); g.connect(this.master);
+        src.start(t); src.stop(t + dur);
+    }); }
+
+    // 27. WARP - portal sound sweep
+    warp() { this._queue(() => {
+        const t = this.ctx.currentTime;
+        const o = this.ctx.createOscillator();
+        o.type = 'sine'; o.frequency.setValueAtTime(300, t);
+        o.frequency.exponentialRampToValueAtTime(1200, t + 0.5);
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.01, t);
+        g.gain.linearRampToValueAtTime(0.2, t + 0.15);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+        o.connect(g); g.connect(this.master);
+        o.start(t); o.stop(t + 0.55);
+        this._playNoise(0.5, 'white', 0.15, 1000, 2);
+    }); }
+
+    // 28. CHEST OPEN - creak followed by gold coin cascade
+    chestOpen() { this._queue(() => {
+        const t = this.ctx.currentTime;
+        const o = this.ctx.createOscillator();
+        o.type = 'triangle'; o.frequency.setValueAtTime(200, t);
+        o.frequency.linearRampToValueAtTime(80, t + 0.3);
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.15, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+        o.connect(g); g.connect(this.master);
+        o.start(t); o.stop(t + 0.3);
+        setTimeout(() => { this.coin(); }, 120);
+    }); }
+
+    // 29. TRAP - snap and poison splash
+    trap() { this._queue(() => {
+        const t = this.ctx.currentTime;
+        const o1 = this.ctx.createOscillator();
+        o1.type = 'triangle'; o1.frequency.setValueAtTime(1000, t);
+        const g1 = this.ctx.createGain();
+        g1.gain.setValueAtTime(0.2, t);
+        g1.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+        o1.connect(g1); g1.connect(this.master);
+        o1.start(t); o1.stop(t + 0.05);
+        this._playNoise(0.4, 'white', 0.25, 400, 2);
+    }); }
 }
+
 
 // ═══════════════════════════════════════════════════════════════
 // AMBIENT MUSIC ENGINE — Procedural background music per location

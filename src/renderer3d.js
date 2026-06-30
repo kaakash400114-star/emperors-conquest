@@ -17,7 +17,7 @@ const {
 } = THREE;
 
 import { Renderer } from './renderer.js';
-import { MAP_W, MAP_H, TERRITORIES, EMPIRES } from './map.js';
+import { MAP_W, MAP_H, TERRITORIES, EMPIRES, REGION_TABS, T, E } from './map.js';
 import { COUNTRY_DB } from './country-db.js';
 import { RESOURCE_KEYS, RESOURCES } from './resources.js';
 import { ERAS } from './techtree.js';
@@ -37,7 +37,8 @@ const CW = 960, CH = 640;
 // ── Per-country color palette from COUNTRY_DB ──
 function _countryColor(ci, geoToISO) {
     if (geoToISO && geoToISO[ci]) {
-        const entry = COUNTRY_DB[geoToISO[ci]];
+        const cleanKey = String(parseInt(geoToISO[ci], 10));
+        const entry = COUNTRY_DB[cleanKey];
         if (entry) {
             const hex = entry.c;
             return [(hex >> 16 & 0xFF) / 255, (hex >> 8 & 0xFF) / 255, (hex & 0xFF) / 255];
@@ -81,6 +82,32 @@ const ROOM_COLORS = {
 };
 const ENEMY_TYPES = ['grunt', 'archer', 'knight', 'mage', 'boss'];
 const ENEMY_COLORS = { grunt: 0xcc3333, archer: 0x339933, knight: 0x6666cc, mage: 0x9933cc, boss: 0xff6600 };
+
+// ── Real historical emperors/leaders as dungeon bosses ──
+// Each territory's dungeon throne room spawns a boss based on its region.
+// tid % length picks from the list — deterministic per territory.
+const DUNGEON_BOSSES = [
+  { name: 'Emperor Ashoka',        title: 'The Great',        era: 'Maurya Empire',        color: 0xe67e22, hpMult: 2.5, atk: 8,  quote: 'Peace does not come from surrender — it comes from conquest!' },
+  { name: 'Julius Caesar',          title: 'Dictator Perpetuo', era: 'Roman Republic',      color: 0xc0392b, hpMult: 2.8, atk: 9,  quote: 'Veni, vidi, vici — and I shall crush you!' },
+  { name: 'Genghis Khan',           title: 'The Great Khan',    era: 'Mongol Empire',        color: 0x7f8c8d, hpMult: 3.0, atk: 10, quote: 'One arrow cannot slay me. An army of millions bows to my will!' },
+  { name: 'Sultan Suleiman',        title: 'The Magnificent',   era: 'Ottoman Empire',       color: 0x16a085, hpMult: 2.6, atk: 8,  quote: 'My sword writes laws that outlast stone and parchment!' },
+  { name: 'Queen Victoria',        title: 'Empress of India',  era: 'British Empire',       color: 0x2c3e50, hpMult: 2.2, atk: 7,  quote: 'We are not amused by your insolence!' },
+  { name: 'Napoleon Bonaparte',     title: 'Emperor of France', era: "Napoleon's France",   color: 0x2980b9, hpMult: 2.7, atk: 9,  quote: 'Victory belongs to the most persevering!' },
+  { name: 'Emperor Meiji',          title: 'The Modernizer',    era: 'Imperial Japan',      color: 0xe74c3c, hpMult: 2.3, atk: 8,  quote: 'The storm of change cannot be turned back!' },
+  { name: 'Otto von Bismarck',     title: 'The Iron Chancellor', era: 'German Empire',      color: 0x444444, hpMult: 2.5, atk: 8,  quote: 'Blood and iron will decide this battle!' },
+  { name: 'Catherine the Great',   title: 'Empress of Russia', era: 'Russian Empire',       color: 0xcc0000, hpMult: 2.4, atk: 8,  quote: 'I shall expand my dominion by any means necessary!' },
+  { name: 'Pharaoh Ramses II',     title: 'Son of Ra',         era: 'Egyptian Empire',      color: 0xf1c40f, hpMult: 2.6, atk: 9,  quote: 'The gods themselves shall tremble before my armies!' },
+  { name: 'Qin Shi Huang',         title: 'First Emperor',     era: 'Chinese Empire',       color: 0xdc143c, hpMult: 3.0, atk: 10, quote: 'I have unified all under heaven — you shall kneel!' },
+  { name: 'Montezuma II',          title: 'Sovereign of Aztecs', era: 'Aztec Empire',        color: 0x228b22, hpMult: 2.4, atk: 8,  quote: 'The sun god demands your blood as tribute!' },
+  { name: 'King Shaka',             title: 'The Zulu Lion',      era: 'Zulu Kingdom',         color: 0x8b4513, hpMult: 2.3, atk: 9,  quote: 'My impis will trample you into the dust!' },
+  { name: 'Emperor Justinian',      title: 'The Lawgiver',       era: 'Byzantine Empire',     color: 0x9400d3, hpMult: 2.5, atk: 8,  quote: 'Rome shall rise again — from the ashes of your defeat!' },
+  { name: 'Cyrus the Great',        title: 'King of Kings',      era: 'Persian Empire',       color: 0xffd700, hpMult: 2.7, atk: 9,  quote: 'I am the king of the four corners of the world!' },
+  { name: 'Alexander the Great',    title: 'Conqueror of Worlds', era: 'Macedonian Empire',    color: 0x3498db, hpMult: 3.0, atk: 10, quote: 'There is nothing impossible to him who will try!' },
+  { name: 'Attila the Hun',         title: 'Scourge of God',     era: 'Hunnic Empire',        color: 0x8e44ad, hpMult: 2.8, atk: 10, quote: 'Where my horse has trodden, no grass grows!' },
+  { name: 'Charlemagne',            title: 'Holy Roman Emperor', era: 'Frankish Empire',      color: 0xd4a017, hpMult: 2.5, atk: 8,  quote: 'To have another language is to possess a second soul — and a second sword!' },
+  { name: 'Timur the Lame',        title: 'Sword of Islam',     era: 'Timurid Empire',       color: 0x1abc9c, hpMult: 2.9, atk: 9,  quote: 'The world is not enough — I shall conquer the stars!' },
+  { name: 'Saladin',                title: 'Sultan of Egypt',    era: 'Ayyubid Sultanate',   color: 0xe67e22, hpMult: 2.6, atk: 9,  quote: 'Victory is changing the hearts of your opponents by triumph over them!' },
+];
 
 // ═══════════════════════════════════════════════════════════════════
 //  SEED PRNG
@@ -584,6 +611,7 @@ let _voxelData = null;   // { tid, pos: Vector3, normal: Vector3 }[]
 let _terrCenters = [];   // Vector3 per territory
 let _terrVoxCount = [];  // voxel count per territory
 let _geoToISO = [];      // geometry index → ISO numeric code string (for COUNTRY_DB)
+let _geoToCountryIdx = []; // geometry index → COUNTRIES array index (for World Conquest)
 let _terrLookupData = null; // ImageData for Emperor territory lookup
 let _globeBuilt = false;
 
@@ -667,6 +695,89 @@ function _buildVoxelDataFromTopology(topoData) {
         }
         ctx.closePath();
         ctx.fill();
+    }
+
+    // Build geometry-index → COUNTRIES array index mapping
+    const cleanName = name => name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '');
+    const nameToCountryIdx = new Map();
+    COUNTRIES.forEach((c, idx) => {
+        nameToCountryIdx.set(cleanName(c.name), idx);
+    });
+
+    const overrides = {
+        'unitedstatesofamerica': 'unitedstates',
+        'democraticrepublicofthecongo': 'drcongo',
+        'republicofthecongo': 'congo',
+        'cotedivoire': 'cotedivoire',
+        'swaziland': 'eswatini',
+        'palestinianterritories': 'palestine',
+        'bruneidarussalam': 'brunei',
+        'timorleste': 'timorleste',
+        'unitedrepublicoftanzania': 'tanzania',
+        'syrianarabrepublic': 'syria',
+        'russianfederation': 'russia',
+        'republicofmoldova': 'moldova',
+        'venezuelabolivarianrepublicof': 'venezuela',
+        'iranislamicrepublicof': 'iran',
+        'laopeoplesdemocraticrepublic': 'laos',
+        'korearepublicof': 'southkorea',
+        'democracticpeoplesrepublicofkorea': 'northkorea',
+        'koreadempeoplesrepof': 'northkorea',
+        'korearepublic': 'southkorea',
+        'micronesiafederatedstatesof': 'micronesia',
+        'falklandislandsislasmalvinas': 'falklandislands',
+        'falklandis': 'falklandislands',
+        'caboverde': 'caboverde',
+        'capeverde': 'caboverde',
+        'unitedarabemirates': 'unitedarabemirates',
+        'uae': 'unitedarabemirates',
+        'czechrepublic': 'germany', // fallback mapping
+        'czechia': 'germany',       // fallback mapping
+        'stlucia': 'saintlucia',
+        'stvincentandthegrenadines': 'saintvincent',
+        'stkittsandnevis': 'saintkittsandnevis',
+        'greenland': 'denmark',
+        'puertorico': 'unitedstates',
+        'newcaledonia': 'france',
+        'wsahara': 'morocco',
+        'somaliland': 'somalia'
+    };
+
+    _geoToCountryIdx = [];
+    for (let ci = 0; ci < countries.geometries.length; ci++) {
+        const geom = countries.geometries[ci];
+        const isoNum = _geoToISO[ci];
+        const cleanKey = isoNum ? String(parseInt(isoNum, 10)) : "";
+        const entry = COUNTRY_DB[cleanKey];
+        let matchedIdx = -1;
+        let dbName = null;
+
+        if (entry && entry.m) {
+            dbName = cleanName(entry.m);
+        } else if (geom.properties && geom.properties.name) {
+            dbName = cleanName(geom.properties.name);
+        }
+
+        if (dbName) {
+            let idx = nameToCountryIdx.get(dbName);
+            if (idx === undefined) {
+                const mappedName = overrides[dbName];
+                if (mappedName) {
+                    idx = nameToCountryIdx.get(mappedName);
+                }
+            }
+            if (idx === undefined) {
+                const found = COUNTRIES.find(c => {
+                    const cn = cleanName(c.name);
+                    return cn.includes(dbName) || dbName.includes(cn);
+                });
+                if (found) idx = found.id;
+            }
+            if (idx !== undefined) {
+                matchedIdx = idx;
+            }
+        }
+        _geoToCountryIdx[ci] = matchedIdx;
     }
 
     const imgData = ctx.getImageData(0, 0, TOPO_W, TOPO_H);
@@ -775,7 +886,10 @@ function _buildGlobeMesh() {
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 
-    mesh.userData = { terrIds: voxels.map(v => v.tid) };
+    mesh.userData = {
+        terrIds: voxels.map(v => v.tid),
+        countryIds: voxels.map(v => _geoToCountryIdx[v.countryIdx])
+    };
     return mesh;
 }
 
@@ -1207,6 +1321,10 @@ function _generateDungeon(tid) {
         }
     }
 
+    // ── Pick emperor boss for this territory's dungeon ──
+    const bossData = DUNGEON_BOSSES[tid % DUNGEON_BOSSES.length];
+    let bossEmperor = null; // set on throne room enemy
+
     // ── Generate enemies for each room (scales with depth) ──
     const enemies = [];
     for (let ri = 0; ri < rooms.length; ri++) {
@@ -1219,23 +1337,44 @@ function _generateDungeon(tid) {
             const ex = (room.x + 0.5 + rng() * (room.w - 1)) * 4;
             const ez = (room.y + 0.5 + rng() * (room.h - 1)) * 4;
             const isBoss = etype === 'boss';
-            const hpMult = isBoss ? 3 : depthMult;
-            enemies.push({
+            const hpMult = isBoss ? bossData.hpMult : depthMult;
+            const baseHP = isBoss ? 120 : (etype === 'knight' ? 50 : etype === 'mage' ? 30 : etype === 'archer' ? 25 : 20);
+            const enemy = {
                 type: etype,
                 x: ex, y: 0.35, z: ez,
-                hp: Math.floor((isBoss ? 100 : etype === 'knight' ? 50 : etype === 'mage' ? 30 : etype === 'archer' ? 25 : 20) * hpMult),
-                maxHp: Math.floor((isBoss ? 100 : etype === 'knight' ? 50 : etype === 'mage' ? 30 : etype === 'archer' ? 25 : 20) * hpMult),
-                color: ENEMY_COLORS[etype],
-                size: isBoss ? 0.6 : 0.35,
+                hp: Math.floor(baseHP * hpMult),
+                maxHp: Math.floor(baseHP * hpMult),
+                color: isBoss ? bossData.color : ENEMY_COLORS[etype],
+                size: isBoss ? 0.7 : 0.35,
                 isBoss: isBoss,
                 bobOffset: rng() * Math.PI * 2,
                 dead: false,
-                roomIdx: ri
+                atk: isBoss ? bossData.atk : (etype === 'knight' ? 4 : etype === 'archer' ? 3 : etype === 'mage' ? 5 : 2),
+                name: isBoss ? bossData.name : null,
+                title: isBoss ? bossData.title : null,
+                era: isBoss ? bossData.era : null,
+                quote: isBoss ? bossData.quote : null,
+            };
+            if (isBoss) bossEmperor = enemy;
+            enemies.push(enemy);
+        }
+    }
+
+    // Generate treasure chests
+    const chests = [];
+    for (const room of rooms) {
+        if (room.type === 'vault') {
+            chests.push({
+                x: room.centerWorld.x + (rng() - 0.5) * 1.5,
+                y: 0.2,
+                z: room.centerWorld.z + (rng() - 0.5) * 1.5,
+                opened: false,
+                value: 15 + Math.floor(rng() * 21) // 15-35 coins
             });
         }
     }
 
-    return { grid, GRID, rooms, connections, enemies, portals, traps, depth };
+    return { grid, GRID, rooms, connections, enemies, portals, traps, chests, depth, bossEmperor };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1300,9 +1439,10 @@ function _buildDungeon3D(dungeon) {
                     }
                     const wall = new Mesh(wGeo, wMat);
                     wall.position.copy(wPos);
-                    if (dx === 1) wall.rotation.y = Math.PI;
-                    else if (dy === 1) wall.rotation.y = Math.PI / 2;
-                    else if (dy === -1) wall.rotation.y = -Math.PI / 2;
+                    if (dx === 1) wall.rotation.y = -Math.PI / 2;
+                    else if (dx === -1) wall.rotation.y = Math.PI / 2;
+                    else if (dy === 1) wall.rotation.y = Math.PI;
+                    else if (dy === -1) wall.rotation.y = 0;
                     wall.receiveShadow = true;
                     group.add(wall);
                 }
@@ -1312,6 +1452,7 @@ function _buildDungeon3D(dungeon) {
             if (val > 0 && gx % 2 === 0 && gy % 2 === 0) {
                 const torch = new PointLight(0xff8833, 1.5, 10);
                 torch.position.set(wx, WALL_H * 0.8, wz);
+                torch.userData.isTorch = true;
                 group.add(torch);
             }
         }
@@ -1378,6 +1519,7 @@ function _buildDungeon3D(dungeon) {
             // Subtle red point light
             const trapLight = new PointLight(0xff2200, 0.5, 3);
             trapLight.position.set(trap.x, 0.5, trap.z);
+            trapLight.userData.isTrapLight = true;
             group.add(trapLight);
         }
     }
@@ -1440,6 +1582,9 @@ export class Renderer3D extends Renderer {
         this._flatMapZoom = 1;
         this._flatMapOffX = 0;
         this._flatMapOffY = 0;
+        this._flatMapTargetZoom = null;
+        this._flatMapTargetOffX = 0;
+        this._flatMapTargetOffY = 0;
         this._flatMapDrag = false;
         this._flatMapDragStartX = 0;
         this._flatMapDragStartY = 0;
@@ -1492,7 +1637,7 @@ export class Renderer3D extends Renderer {
         this._camera = new PerspectiveCamera(50, g.W / g.H, 0.1, 300);
         this._camera.position.set(0, 3, 18);
 
-        this._controls = this._createOrbitControls(cv);
+        this._controls = this._createOrbitControls(this.ctx.canvas);
         this._controls.target.set(0, 0, 0);
 
         // Lights — boosted for clear visibility
@@ -1850,6 +1995,14 @@ export class Renderer3D extends Renderer {
     // ═══════════════════════════════════════════════════════════
     _enterInterior(tid) {
         if (!tid && tid !== 0) return;
+
+        // Lazy-load dungeon combat module (only on first dungeon entry)
+        if (!this._dungeonCombatMod) {
+            import('./dungeon-combat.js').then(mod => {
+                this._dungeonCombatMod = mod;
+            }).catch(e => console.error('Failed to load dungeon-combat:', e));
+        }
+
         this._dungeonData = _generateDungeon(tid);
         this._interiorGroup = _buildDungeon3D(this._dungeonData);
         this._scene.add(this._interiorGroup);
@@ -1857,6 +2010,14 @@ export class Renderer3D extends Renderer {
         // Hide globe
         if (this._globeGroup) this._globeGroup.visible = false;
         if (this._structGroup) this._structGroup.visible = false;
+
+        // Player stats
+        this._playerHP = 100;
+        this._playerMaxHP = 100;
+        this._playerDead = false;
+        this._playerInvuln = 0; // invulnerability frames after getting hit
+        this._bossEncountered = false; // track first time seeing boss
+        this._bossAlive = true;
 
         // Create player
         const pGeo = new BoxGeometry(0.35, 0.35, 0.35);
@@ -1894,6 +2055,29 @@ export class Renderer3D extends Renderer {
             eMesh.userData.hpBar = hpBar;
         }
 
+        // Create chest meshes
+        this._chestMeshes = [];
+        if (this._dungeonData && this._dungeonData.chests) {
+            const chestGeo = new BoxGeometry(0.5, 0.4, 0.45);
+            const chestMat = new MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.4, metalness: 0.6 }); // brown wood
+            const lidGeo = new BoxGeometry(0.52, 0.15, 0.47);
+            const lidMat = new MeshStandardMaterial({ color: 0xffd700, roughness: 0.2, metalness: 0.9 }); // gold lid
+
+            for (const chest of this._dungeonData.chests) {
+                const chestGroup = new Group();
+                const base = new Mesh(chestGeo, chestMat);
+                base.position.y = 0.2;
+                const lid = new Mesh(lidGeo, lidMat);
+                lid.position.y = 0.42;
+                chestGroup.add(base);
+                chestGroup.add(lid);
+                chestGroup.position.set(chest.x, 0, chest.z);
+
+                this._interiorGroup.add(chestGroup);
+                this._chestMeshes.push({ group: chestGroup, data: chest });
+            }
+        }
+
         // Position camera for interior
         this._controls.target.set(this._playerPos.x, 1.5, this._playerPos.z);
         this._controls.radius = 8;
@@ -1925,6 +2109,7 @@ export class Renderer3D extends Renderer {
         this._dungeonData = null;
         this._player = null;
         this._enemyMeshes = [];
+        this._chestMeshes = [];
 
         if (this._globeGroup) this._globeGroup.visible = true;
         if (this._structGroup) this._structGroup.visible = true;
@@ -1942,11 +2127,37 @@ export class Renderer3D extends Renderer {
     // ═══════════════════════════════════════════════════════════
     _updateInterior(dt) {
         const speed = 0.08;
+        let dx = 0, dz = 0;
+        if (this._keys['KeyW'] || this._keys['ArrowUp']) dz -= speed;
+        if (this._keys['KeyS'] || this._keys['ArrowDown']) dz += speed;
+        if (this._keys['KeyA'] || this._keys['ArrowLeft']) dx -= speed;
+        if (this._keys['KeyD'] || this._keys['ArrowRight']) dx += speed;
+
         let moved = false;
-        if (this._keys['KeyW'] || this._keys['ArrowUp']) { this._playerPos.z -= speed; moved = true; }
-        if (this._keys['KeyS'] || this._keys['ArrowDown']) { this._playerPos.z += speed; moved = true; }
-        if (this._keys['KeyA'] || this._keys['ArrowLeft']) { this._playerPos.x -= speed; moved = true; }
-        if (this._keys['KeyD'] || this._keys['ArrowRight']) { this._playerPos.x += speed; moved = true; }
+        if (dx !== 0 || dz !== 0) {
+            const GRID = 12;
+            const CELL = 4;
+            const isWalkable = (x, z) => {
+                if (!this._dungeonData) return true;
+                const gx = Math.floor(x / CELL);
+                const gy = Math.floor(z / CELL);
+                if (gx >= 0 && gx < GRID && gy >= 0 && gy < GRID) {
+                    return this._dungeonData.grid[gy * GRID + gx] !== 0;
+                }
+                return false;
+            };
+
+            const padX = dx > 0 ? 0.25 : -0.25;
+            if (isWalkable(this._playerPos.x + dx + padX, this._playerPos.z)) {
+                this._playerPos.x += dx;
+                moved = true;
+            }
+            const padZ = dz > 0 ? 0.25 : -0.25;
+            if (isWalkable(this._playerPos.x, this._playerPos.z + dz + padZ)) {
+                this._playerPos.z += dz;
+                moved = true;
+            }
+        }
 
         if (moved && this._player) {
             this._player.position.set(this._playerPos.x, 0.35, this._playerPos.z);
@@ -1954,6 +2165,16 @@ export class Renderer3D extends Renderer {
             this._controls.target.lerp(
                 { x: this._playerPos.x, y: 1.5, z: this._playerPos.z }, 0.05
             );
+
+            // Play footstep sounds periodically
+            const delta = dt || 16.67;
+            this._footstepTimer = (this._footstepTimer || 0) + delta;
+            if (this._footstepTimer > 280) {
+                this._footstepTimer = 0;
+                if (this.g.sfx && typeof this.g.sfx.footstep === 'function') {
+                    this.g.sfx.footstep();
+                }
+            }
 
             // ── PORTAL TELEPORTATION (non-euclidean) ──
             if (this._dungeonData && this._dungeonData.portals) {
@@ -1970,6 +2191,9 @@ export class Renderer3D extends Renderer {
                         this._player.position.set(this._playerPos.x, 0.35, this._playerPos.z);
                         this._controls.target.set(this._playerPos.x, 1.5, this._playerPos.z);
                         this._debris.spawn(new Vector3(roomB.centerWorld.x, 0.5, roomB.centerWorld.z), new Color(0x8800ff), 10);
+                        if (this.g.sfx && typeof this.g.sfx.warp === 'function') {
+                            this.g.sfx.warp();
+                        }
                         _AgentSystem._notifications.push({
                             text: '[PORTAL] Warped through non-Euclidean space!',
                             color: '#c6f', timer: 150,
@@ -1981,11 +2205,58 @@ export class Renderer3D extends Renderer {
                         this._player.position.set(this._playerPos.x, 0.35, this._playerPos.z);
                         this._controls.target.set(this._playerPos.x, 1.5, this._playerPos.z);
                         this._debris.spawn(new Vector3(roomA.centerWorld.x, 0.5, roomA.centerWorld.z), new Color(0x8800ff), 10);
+                        if (this.g.sfx && typeof this.g.sfx.warp === 'function') {
+                            this.g.sfx.warp();
+                        }
                         _AgentSystem._notifications.push({
                             text: '[PORTAL] Warped through non-Euclidean space!',
                             color: '#c6f', timer: 150,
                         });
                         break;
+                    }
+                }
+            }
+
+            // ── CHEST OPENING ──
+            if (this._dungeonData && this._dungeonData.chests) {
+                for (const chest of this._dungeonData.chests) {
+                    if (chest.opened) continue;
+                    const dist = Math.hypot(this._playerPos.x - chest.x, this._playerPos.z - chest.z);
+                    if (dist < 0.8) {
+                        chest.opened = true;
+                        const emp = this.g.empires[this.g.player];
+                        if (emp) {
+                            emp.coins += chest.value;
+                            this.g._log(`Found chest! +${chest.value} coins`);
+                        }
+                        if (this.g.sfx && typeof this.g.sfx.chestOpen === 'function') {
+                            this.g.sfx.chestOpen();
+                        }
+                        _AgentSystem._notifications.push({
+                            text: `[CHEST] Opened treasure chest! +${chest.value} 💰`,
+                            color: '#ffd700', timer: 120
+                        });
+
+                        // Spawn gold coin particles at chest pos
+                        const chestPos = new Vector3(chest.x, 0.4, chest.z);
+                        this._coins.spawn(chestPos, 4);
+
+                        // Visual feedback: find the mesh group and lift the lid or fade it out
+                        const chestMesh = this._chestMeshes.find(cm => cm.data === chest);
+                        if (chestMesh) {
+                            // Lift lid
+                            const lid = chestMesh.group.children[1];
+                            if (lid) {
+                                lid.position.y += 0.2;
+                                lid.rotation.x = -Math.PI / 4;
+                            }
+                            // Fade out group after 1 second
+                            setTimeout(() => {
+                                if (chestMesh.group.parent) {
+                                    chestMesh.group.parent.remove(chestMesh.group);
+                                }
+                            }, 1000);
+                        }
                     }
                 }
             }
@@ -1998,6 +2269,9 @@ export class Renderer3D extends Renderer {
                     if (dist < 0.6 && !trap.triggered) {
                         trap.triggered = true;
                         trap.cooldown = 120; // 2s cooldown before re-trigger
+                        if (this.g.sfx && typeof this.g.sfx.trap === 'function') {
+                            this.g.sfx.trap();
+                        }
                         _AgentSystem._notifications.push({
                             text: `[TRAP] ${trap.name}! -${trap.damage} HP`,
                             color: '#f22', timer: 120,
@@ -2023,11 +2297,53 @@ export class Renderer3D extends Renderer {
             this._player.material.emissiveIntensity = pulse;
         }
 
+        // Traverse interior group to animate lights and portals
+        if (this._interiorGroup) {
+            this._interiorGroup.traverse(child => {
+                if (child.userData.isTorch) {
+                    // Torch flickering effect
+                    child.intensity = 1.2 + Math.sin(this.time * 0.15 + child.position.x) * 0.25 + Math.random() * 0.08;
+                } else if (child.userData.isPortal) {
+                    // Portal ring rotating and pulsating
+                    child.rotation.z += 0.03;
+                    child.scale.setScalar(0.9 + Math.sin(this.time * 0.08 + child.position.x) * 0.1);
+                } else if (child.userData.isTrap) {
+                    // Pulsating warning red floor circle
+                    const p = Math.sin(this.time * 0.06 + child.position.x) * 0.15 + 0.35;
+                    child.material.opacity = p;
+                } else if (child.userData.isTrapLight) {
+                    // Flickering trap light
+                    child.intensity = 0.4 + Math.sin(this.time * 0.12) * 0.15;
+                } else if (child.userData.isShiftLight) {
+                    // Shifting yellow light warning pulse
+                    child.intensity = 0.6 + Math.sin(this.time * 0.05) * 0.35;
+                }
+            });
+        }
+
         // Enemy idle bobbing
         for (const em of this._enemyMeshes) {
             if (em.data.dead) continue;
             const bob = Math.sin(this.time * 0.05 + em.data.bobOffset) * 0.05;
             em.mesh.position.y = em.data.y + bob;
+        }
+
+        // ── Lazy-loaded enemy combat + boss encounter ──
+        if (this._dungeonCombatMod) {
+            const r = this._dungeonCombatMod.updateEnemyCombat({
+                playerPos: this._playerPos,
+                playerHP: this._playerHP, playerMaxHP: this._playerMaxHP,
+                playerDead: this._playerDead, playerInvuln: this._playerInvuln,
+                enemyMeshes: this._enemyMeshes, player: this._player,
+                _debris: this._debris, g: this.g, dungeonData: this._dungeonData,
+                bossEncountered: this._bossEncountered, bossAlive: this._bossAlive,
+                _exitInterior: () => this._exitInterior(),
+            });
+            this._playerHP = r.playerHP;
+            this._playerDead = r.playerDead;
+            this._playerInvuln = r.playerInvuln;
+            this._bossEncountered = r.bossEncountered;
+            this._bossAlive = r.bossAlive;
         }
     }
 
@@ -2046,6 +2362,11 @@ export class Renderer3D extends Renderer {
         }
         if (!nearest) return;
 
+        // Play sword attack sound
+        if (this.g.sfx && typeof this.g.sfx.sword === 'function') {
+            this.g.sfx.sword();
+        }
+
         const e = nearest.data;
         e.hp -= 15; // base attack damage
 
@@ -2056,9 +2377,25 @@ export class Renderer3D extends Renderer {
             this._debris.spawn(pos, nearest.mesh.material.color, 8);
             this._dust.spawn(pos, 6);
 
+            // Play explosion sound on kill
+            if (this.g.sfx && typeof this.g.sfx.explosion === 'function') {
+                this.g.sfx.explosion();
+            }
+
             // Gold coin fountain
             this._coins.spawn(pos);
             this.g.stats.kills = (this.g.stats.kills || 0) + 1;
+
+            // Boss kill notification
+            if (e.isBoss) {
+                this._bossAlive = false;
+                _AgentSystem._notifications.push({
+                    text: `👑 ${e.name} DEFEATED! ${e.era} falls!`,
+                    color: '#ffd700',
+                    timer: 200,
+                });
+                this._coins.spawn(pos, 12); // extra gold burst for boss
+            }
 
             // Remove mesh
             if (nearest.mesh.parent) nearest.mesh.parent.remove(nearest.mesh);
@@ -2068,7 +2405,21 @@ export class Renderer3D extends Renderer {
 
             // Check if all enemies dead
             if (this._enemyMeshes.every(em => em.data.dead)) {
-                setTimeout(() => this._exitInterior(), 1500);
+                const reward = 50 + Math.floor(Math.random() * 21); // 50-70 coins
+                const emp = this.g.empires[this.g.player];
+                if (emp) {
+                    emp.coins += reward;
+                    const bossName = this._dungeonData.bossEmperor ? this._dungeonData.bossEmperor.name : '';
+                    this.g._log(`DUNGEON CLEARED! Defeated ${bossName}! +${reward} coins`);
+                }
+                if (this.g.sfx && typeof this.g.sfx.victory === 'function') {
+                    this.g.sfx.victory();
+                }
+                _AgentSystem._notifications.push({
+                    text: `DUNGEON CLEARED! Reward: +${reward} 💰`,
+                    color: '#ffd700', timer: 180
+                });
+                setTimeout(() => this._exitInterior(), 2000);
             }
         } else {
             // Update HP bar
@@ -2079,6 +2430,7 @@ export class Renderer3D extends Renderer {
             }
         }
     }
+
 
     // ═══════════════════════════════════════════════════════════
     //  DRAW MINIMAP (2D overlay)
@@ -2121,10 +2473,17 @@ export class Renderer3D extends Renderer {
             if (e.dead) continue;
             const ex = mmX + (e.x / 4) * cellSize;
             const ey = mmY + (e.z / 4) * cellSize;
-            c.fillStyle = e.isBoss ? '#ff6600' : '#ff3333';
-            c.beginPath();
-            c.arc(ex, ey, e.isBoss ? 3 : 2, 0, Math.PI * 2);
-            c.fill();
+            if (e.isBoss) {
+                c.fillStyle = '#' + (e.color || 0xff6600).toString(16).padStart(6, '0');
+                c.beginPath(); c.arc(ex, ey, 4, 0, Math.PI * 2); c.fill();
+                // Crown marker
+                c.fillStyle = '#ffd700';
+                c.font = 'bold 8px serif'; c.textAlign = 'center';
+                c.fillText('♛', ex, ey - 5);
+            } else {
+                c.fillStyle = '#ff3333';
+                c.beginPath(); c.arc(ex, ey, 2, 0, Math.PI * 2); c.fill();
+            }
         }
 
         // Draw player (green dot)
@@ -2345,9 +2704,8 @@ export class Renderer3D extends Renderer {
     // ═══════════════════════════════════════════════════════════
     _raycastTerritory(screenX, screenY) {
         if (!this._3dReady || !this._globeMesh) return -1;
-        const rect = this._glCanvas.getBoundingClientRect();
-        this._mouse.x = ((screenX - rect.left) / rect.width) * 2 - 1;
-        this._mouse.y = -((screenY - rect.top) / rect.height) * 2 + 1;
+        this._mouse.x = (screenX / this.g.W) * 2 - 1;
+        this._mouse.y = -(screenY / this.g.H) * 2 + 1;
         this._raycaster.setFromCamera(this._mouse, this._camera);
 
         const structHits = this._raycaster.intersectObjects(this._structGroup.children, true);
@@ -2359,11 +2717,16 @@ export class Renderer3D extends Renderer {
 
         const hits = this._raycaster.intersectObject(this._globeMesh, false);
         if (hits.length > 0) {
-            const face = hits[0].face;
-            if (face) {
-                const idx = face.a;
-                const tid = this._globeMesh.userData.terrIds[idx];
-                return tid >= 0 ? tid : -1;
+            const hit = hits[0];
+            const idx = hit.instanceId;
+            if (idx !== undefined && idx >= 0) {
+                if (this.g._countryMode) {
+                    const cid = this._globeMesh.userData.countryIds[idx];
+                    return cid !== undefined && cid >= 0 ? cid : -1;
+                } else {
+                    const tid = this._globeMesh.userData.terrIds[idx];
+                    return tid !== undefined && tid >= 0 ? tid : -1;
+                }
             }
         }
         return -1;
@@ -2428,6 +2791,9 @@ export class Renderer3D extends Renderer {
 
         this._debris.spawn(pos, color, 6);
         this._dust.spawn(pos, 4);
+        if (this.g.sfx && typeof this.g.sfx.explosion === 'function') {
+            this.g.sfx.explosion();
+        }
     }
 
     triggerVictory(tid, color) {
@@ -2436,6 +2802,7 @@ export class Renderer3D extends Renderer {
     }
 
     _rebuildStructure(tid) {
+        if (!_terrCenters[tid]) return;
         const old = this._structures[tid];
         if (old) {
             this._structGroup.remove(old);
@@ -2520,13 +2887,25 @@ export class Renderer3D extends Renderer {
     //  OVERRIDE: toScr (3D projection for floating text)
     // ═══════════════════════════════════════════════════════════
     toScr(x, y) {
-        if (this._3dReady && _terrCenters[x]) {
-            const vec = _terrCenters[x].clone().add(new Vector3(0, 1, 0));
-            vec.project(this._camera);
-            return {
-                x: (vec.x * 0.5 + 0.5) * this.g.W,
-                y: (-vec.y * 0.5 + 0.5) * this.g.H
-            };
+        if (this._3dReady && this._view === 'globe') {
+            let tid = -1;
+            if (y === undefined) {
+                tid = x;
+            } else {
+                const activeTerr = this.g._activeTerritories || TERRITORIES;
+                const match = activeTerr.find(t => t.cx === x && t.cy === y);
+                if (match) {
+                    tid = match.id;
+                }
+            }
+            if (tid >= 0 && _terrCenters[tid]) {
+                const vec = _terrCenters[tid].clone().add(new Vector3(0, 1, 0));
+                vec.project(this._camera);
+                return {
+                    x: (vec.x * 0.5 + 0.5) * this.g.W,
+                    y: (-vec.y * 0.5 + 0.5) * this.g.H
+                };
+            }
         }
         return super.toScr(x, y);
     }
@@ -2535,12 +2914,11 @@ export class Renderer3D extends Renderer {
     //  OVERRIDE: terrAt (flat map or 3D raycast)
     // ═══════════════════════════════════════════════════════════
     terrAt(sx, sy) {
+        if (this._3dReady && this._view === 'globe') {
+            return this._raycastTerritory(sx, sy);
+        }
         if (this.g.state === 'playing' && this._flatMapLoaded) {
             return this._flatMapTerrAt(sx, sy);
-        }
-        if (this._3dReady && this._view === 'globe' &&
-            (this.g.state === 'territory')) {
-            return this._raycastTerritory(sx, sy);
         }
         return super.terrAt(sx, sy);
     }
@@ -2558,7 +2936,7 @@ export class Renderer3D extends Renderer {
     _initFlatMapEvents() {
         if (this._flatMapEventsInit) return;
         this._flatMapEventsInit = true;
-        const cv = this._glCanvas || this.g._glCanvas;
+        const cv = this.ctx.canvas;
 
         // Zoom with mouse wheel
         cv.addEventListener('wheel', (e) => {
@@ -2568,8 +2946,10 @@ export class Renderer3D extends Renderer {
             const oldZoom = this._flatMapZoom;
             const delta = e.deltaY > 0 ? 0.9 : 1.1;
             this._flatMapZoom = Math.max(0.5, Math.min(8, this._flatMapZoom * delta));
-            // Zoom toward cursor position
-            const mx = e.offsetX, my = e.offsetY;
+            // Zoom toward cursor position in canvas resolution coordinates
+            const rect = cv.getBoundingClientRect();
+            const mx = (e.clientX - rect.left) * (g.W / rect.width);
+            const my = (e.clientY - rect.top) * (g.H / rect.height);
             const mapW = this._getFlatMapW(), mapH = this._getFlatMapH();
             const baseScale = Math.min(g.W / mapW, g.H / mapH);
             const scale = baseScale * this._flatMapZoom;
@@ -2592,15 +2972,17 @@ export class Renderer3D extends Renderer {
             }
         });
         window.addEventListener('mousemove', (e) => {
+            const rect = cv.getBoundingClientRect();
             if (this._flatMapDrag) {
-                this._flatMapOffX = this._flatMapDragOffX + (e.clientX - this._flatMapDragStartX);
-                this._flatMapOffY = this._flatMapDragOffY + (e.clientY - this._flatMapDragStartY);
+                this._flatMapOffX = this._flatMapDragOffX + (e.clientX - this._flatMapDragStartX) * (this.g.W / rect.width);
+                this._flatMapOffY = this._flatMapDragOffY + (e.clientY - this._flatMapDragStartY) * (this.g.H / rect.height);
             }
             // Hover tracking for territory tooltip
             const g = this.g;
             if (g.state === 'playing' && this._flatMapLoaded) {
-                const rect = cv.getBoundingClientRect();
-                this._flatMapHoverTerr = this._flatMapTerrAt(e.clientX - rect.left, e.clientY - rect.top);
+                const sx = (e.clientX - rect.left) * (g.W / rect.width);
+                const sy = (e.clientY - rect.top) * (g.H / rect.height);
+                this._flatMapHoverTerr = this._flatMapTerrAt(sx, sy);
             }
         });
         window.addEventListener('mouseup', (e) => {
@@ -2624,6 +3006,7 @@ export class Renderer3D extends Renderer {
         }, { passive: true });
         cv.addEventListener('touchmove', (e) => {
             e.preventDefault();
+            const rect = cv.getBoundingClientRect();
             if (e.touches.length === 2) {
                 const dx = e.touches[0].clientX - e.touches[1].clientX;
                 const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -2638,8 +3021,8 @@ export class Renderer3D extends Renderer {
                 }
                 lastPinchDist = dist;
             } else if (e.touches.length === 1 && this._flatMapDrag) {
-                this._flatMapOffX = this._flatMapDragOffX + (e.touches[0].clientX - this._flatMapDragStartX);
-                this._flatMapOffY = this._flatMapDragOffY + (e.touches[0].clientY - this._flatMapDragStartY);
+                this._flatMapOffX = this._flatMapDragOffX + (e.touches[0].clientX - this._flatMapDragStartX) * (this.g.W / rect.width);
+                this._flatMapOffY = this._flatMapDragOffY + (e.touches[0].clientY - this._flatMapDragStartY) * (this.g.H / rect.height);
             }
         }, { passive: false });
         cv.addEventListener('touchend', () => { this._flatMapDrag = false; lastPinchDist = 0; });
@@ -2667,135 +3050,181 @@ export class Renderer3D extends Renderer {
     _drawFlatMap() {
         const c = this.ctx, g = this.g;
 
-        // ── Deep dark background with subtle gradient ──
-        const bgGr = c.createRadialGradient(g.W / 2, g.H / 2, 100, g.W / 2, g.H / 2, g.W);
-        bgGr.addColorStop(0, '#0c1018');
-        bgGr.addColorStop(1, '#050810');
-        c.fillStyle = bgGr;
-        c.fillRect(0, 0, g.W, g.H);
-
         if (!this._flatMapLoaded) {
-            // Elegant loading screen
-            c.fillStyle = 'rgba(255,215,0,0.8)';
+            c.fillStyle = '#1a2a3a';
             c.font = 'bold 20px "Segoe UI", system-ui, sans-serif';
             c.textAlign = 'center'; c.textBaseline = 'middle';
             c.fillText('Loading Map...', g.W / 2, g.H / 2);
             return;
         }
 
+        // ── Smooth zoom-to-country animation (lerp toward target) ──
+        if (this._flatMapTargetZoom != null) {
+            this._flatMapZoom += (this._flatMapTargetZoom - this._flatMapZoom) * 0.08;
+            this._flatMapOffX += (this._flatMapTargetOffX - this._flatMapOffX) * 0.08;
+            this._flatMapOffY += (this._flatMapTargetOffY - this._flatMapOffY) * 0.08;
+            if (Math.abs(this._flatMapZoom - this._flatMapTargetZoom) < 0.01 &&
+                Math.abs(this._flatMapOffX - this._flatMapTargetOffX) < 0.5 &&
+                Math.abs(this._flatMapOffY - this._flatMapTargetOffY) < 0.5) {
+                this._flatMapZoom = this._flatMapTargetZoom;
+                this._flatMapOffX = this._flatMapTargetOffX;
+                this._flatMapOffY = this._flatMapTargetOffY;
+                this._flatMapTargetZoom = null;
+            }
+        }
+
         const { scale, drawX, drawY, drawW, drawH, mapW, mapH } = this._getFlatMapTransform();
 
-        // ── Map shadow + image ──
-        c.save();
-        c.shadowColor = 'rgba(0,0,0,0.6)';
-        c.shadowBlur = 30;
-        c.shadowOffsetX = 0;
-        c.shadowOffsetY = 4;
-        c.fillStyle = '#000';
-        c.fillRect(drawX, drawY, drawW, drawH);
-        c.restore();
-
-        // Draw map image
+        // ── Clean map image only ──
         c.drawImage(this._flatMapImg, drawX, drawY, drawW, drawH);
 
-        // ── Subtle vignette on map ──
-        const vigGr = c.createRadialGradient(
-            drawX + drawW / 2, drawY + drawH / 2, Math.min(drawW, drawH) * 0.3,
-            drawX + drawW / 2, drawY + drawH / 2, Math.max(drawW, drawH) * 0.7
-        );
-        vigGr.addColorStop(0, 'rgba(0,0,0,0)');
-        vigGr.addColorStop(1, 'rgba(0,0,0,0.15)');
-        c.fillStyle = vigGr;
-        c.fillRect(drawX, drawY, drawW, drawH);
-
-        // ── Invisible click targets + hover highlight ──
         const activeTerr = g._activeTerritories || TERRITORIES;
-        const sx = mapW / 960, sy = mapH / 640;
+        const msx = mapW / 960, msy = mapH / 640;
         const hoverTerr = this._flatMapHoverTerr || -1;
+        const isCountryMode = g._countryMode && activeTerr.length > 30;
+
+        // ── 1. DRAW CONNECTION LINES BETWEEN NEIGHBORS ──
+        c.save();
+        const drawnConns = new Set();
+        for (let i = 0; i < activeTerr.length; i++) {
+            const t = activeTerr[i];
+            const ts1 = g.ts[i];
+            if (!ts1) continue;
+            const px1 = drawX + t.cx * msx * scale;
+            const py1 = drawY + t.cy * msy * scale;
+
+            for (const a of t.adj) {
+                const key = Math.min(i, a) + '-' + Math.max(i, a);
+                if (drawnConns.has(key)) continue;
+                drawnConns.add(key);
+
+                const aT = activeTerr[a];
+                if (!aT) continue;
+                const ts2 = g.ts[a];
+                const px2 = drawX + aT.cx * msx * scale;
+                const py2 = drawY + aT.cy * msy * scale;
+
+                // Skip drawing connection lines if both ends are outside visible canvas
+                if ((px1 < 0 || px1 > g.W || py1 < 0 || py1 > g.H) && 
+                    (px2 < 0 || px2 > g.W || py2 < 0 || py2 > g.H)) continue;
+
+                if (ts1.owner != null && ts2 && ts1.owner === ts2.owner) {
+                    const em = EMPIRES[ts1.owner];
+                    c.strokeStyle = em ? em.color + '90' : 'rgba(255,255,255,0.3)';
+                    c.lineWidth = Math.max(1.2, 2.2 * scale * 0.5);
+                    c.setLineDash([]);
+                } else {
+                    c.strokeStyle = 'rgba(255,255,255,0.18)';
+                    c.lineWidth = Math.max(0.8, 1 * scale * 0.5);
+                    c.setLineDash([4, 4]);
+                }
+                c.beginPath();
+                c.moveTo(px1, py1);
+                c.lineTo(px2, py2);
+                c.stroke();
+            }
+        }
+        c.restore();
+
+        // ── 2. DRAW BADGES, TEXT, AND BUTTONS ──
         for (let i = 0; i < activeTerr.length; i++) {
             const t = activeTerr[i];
             const ts = g.ts[i];
             if (!ts) continue;
-            const cx = drawX + t.cx * sx * scale;
-            const cy = drawY + t.cy * sy * scale;
+            const px = drawX + t.cx * msx * scale;
+            const py = drawY + t.cy * msy * scale;
+
+            // Skip if outside visible map area
+            if (px < drawX - 30 || px > drawX + drawW + 30 || py < drawY - 30 || py > drawY + drawH + 30) continue;
+
+            const isHover = hoverTerr === i;
+            const isSel = g.sel === i;
+            const isPlayer = ts.owner === g.player;
+            const co = isCountryMode && g._countryMode ? COUNTRIES[i] : null;
+            const name = t.name || (co ? co.name : '');
+            const flag = co ? co.flag : '';
+            const em = ts.owner != null ? EMPIRES[ts.owner] : null;
+
+            // Badge radius scales with zoom
+            const badgeR = Math.max(10, 11 * Math.min(this._flatMapZoom, 2.2));
+
+            // ── A. Selection / Hover Glow Ring ──
+            if (isSel || isHover) {
+                c.save();
+                c.shadowBlur = isSel ? 12 : 6;
+                c.shadowColor = isSel ? '#ffd700' : 'rgba(255,255,255,0.6)';
+                c.strokeStyle = isSel ? '#ffd700' : 'rgba(255,255,255,0.8)';
+                c.lineWidth = isSel ? 2.5 : 1.5;
+                c.beginPath();
+                c.arc(px, py, badgeR + 3, 0, Math.PI * 2);
+                c.stroke();
+                c.restore();
+            }
+
+            // ── B. Badge Base ──
+            c.save();
+            c.fillStyle = em ? em.color : 'rgba(70,70,70,0.85)';
+            c.beginPath();
+            c.arc(px, py, badgeR, 0, Math.PI * 2);
+            c.fill();
+            // Badge border
+            c.strokeStyle = 'rgba(255,255,255,0.3)';
+            c.lineWidth = 1.2;
+            c.beginPath();
+            c.arc(px, py, badgeR, 0, Math.PI * 2);
+            c.stroke();
+            c.restore();
+
+            // ── C. Troop Count Text ──
+            c.save();
+            const hideTroops = ts.owner && ts.owner !== g.player && !(g.empires[g.player]?.spy);
+            const troopText = String(hideTroops ? '?' : ts.troops);
+            c.fillStyle = '#fff';
+            c.font = `bold ${Math.max(9, Math.floor(10 * Math.min(this._flatMapZoom, 2.2)))}px "Segoe UI", sans-serif`;
+            c.textAlign = 'center';
+            c.textBaseline = 'middle';
+            c.fillText(troopText, px, py);
+            c.restore();
+
+            // ── D. Flag and Name Label (Shifted below badge) ──
+            const showLabel = this._flatMapZoom >= 1.2 || isHover || isPlayer;
+            if (name && showLabel) {
+                const labelSize = Math.max(9, Math.floor(10 * Math.min(this._flatMapZoom, 2.5)));
+                c.save();
+                c.strokeStyle = 'rgba(0,0,0,0.7)';
+                c.lineWidth = 3;
+                c.lineJoin = 'round';
+                c.font = `${isHover || isPlayer ? 'bold ' : ''}${labelSize}px "Segoe UI", sans-serif`;
+                c.textAlign = 'center'; c.textBaseline = 'top';
+                c.fillStyle = '#fff';
+
+                const textY = py + badgeR + 3;
+                c.strokeText(name, px, textY);
+                c.fillText(name, px, textY);
+
+                // Flag above name at high zoom
+                if (co && this._flatMapZoom >= 2.5 && flag) {
+                    c.font = `${Math.max(12, Math.floor(13 * this._flatMapZoom * 0.5))}px serif`;
+                    c.strokeText(flag, px, py - badgeR - 14);
+                    c.fillText(flag, px, py - badgeR - 14);
+                }
+                c.restore();
+            }
+
+            // ── E. Click Target Button ──
             const hitR = Math.max(20, 30 * this._flatMapZoom);
             g.btns.push({
-                rect: { x: cx - hitR, y: cy - hitR, w: hitR * 2, h: hitR * 2 },
-                fn: () => { g._clickTerr(i); }
-            });
-        }
-
-        // ── Hover tooltip (drawn AFTER all buttons so it's on top) ──
-        if (hoverTerr >= 0 && hoverTerr < activeTerr.length && g.ts[hoverTerr]) {
-            const ht = activeTerr[hoverTerr];
-            const hx = drawX + ht.cx * sx * scale;
-            const hy = drawY + ht.cy * sy * scale;
-            const ownerEmp = g.empires[ht.emp];
-            const ownerColor = ownerEmp?.color || '#fff';
-            const ownerName = ownerEmp?.name || 'Neutral';
-
-            // Pin dot
-            c.beginPath();
-            c.arc(hx, hy, 5, 0, Math.PI * 2);
-            c.fillStyle = ownerColor;
-            c.fill();
-            c.strokeStyle = '#fff';
-            c.lineWidth = 1.5;
-            c.stroke();
-
-            // Pulse ring
-            const pulseR = 8 + Math.sin(this.time * 0.08) * 3;
-            c.beginPath();
-            c.arc(hx, hy, pulseR, 0, Math.PI * 2);
-            c.strokeStyle = ownerColor.replace(')', ',0.4)').replace('rgb(', 'rgba(');
-            c.lineWidth = 1.5;
-            c.stroke();
-
-            // Tooltip
-            const tooltipText = `${ht.name}  (${ownerName})`;
-            c.font = 'bold 11px "Segoe UI", system-ui, sans-serif';
-            const tw = c.measureText(tooltipText).width + 16;
-            const th = 24;
-            let tx = hx - tw / 2;
-            let ty = hy - 24;
-            // Keep tooltip on screen
-            if (tx < 4) tx = 4;
-            if (tx + tw > g.W - 4) tx = g.W - tw - 4;
-            if (ty < 4) ty = hy + 10;
-
-            // Frosted glass tooltip
-            c.fillStyle = 'rgba(10,15,25,0.85)';
-            c.beginPath(); c.roundRect(tx, ty, tw, th, 4); c.fill();
-            c.strokeStyle = 'rgba(255,255,255,0.15)';
-            c.lineWidth = 1;
-            c.beginPath(); c.roundRect(tx, ty, tw, th, 4); c.stroke();
-
-            c.fillStyle = '#fff';
-            c.textAlign = 'center'; c.textBaseline = 'middle';
-            c.fillText(tooltipText, tx + tw / 2, ty + th / 2);
-        }
-
-        // ── Weather overlay (subtle) ──
-        if (g.weather && g.weather !== 'clear') {
-            const wDef = WEATHER_TYPES[g.weather];
-            if (wDef) {
-                c.fillStyle = wDef.color;
-                c.fillRect(0, 0, g.W, g.H);
-                if (g.weather === 'rain' || g.weather === 'storm') {
-                    c.strokeStyle = 'rgba(150,150,255,0.2)';
-                    c.lineWidth = 1;
-                    const count = g.weather === 'storm' ? 80 : 40;
-                    for (let i = 0; i < count; i++) {
-                        const rx = Math.random() * g.W, ry = Math.random() * g.H;
-                        c.beginPath(); c.moveTo(rx, ry); c.lineTo(rx - 3, ry + 10); c.stroke();
-                    }
-                } else if (g.weather === 'snow') {
-                    c.fillStyle = 'rgba(255,255,255,0.4)';
-                    for (let i = 0; i < 30; i++) {
-                        c.beginPath(); c.arc(Math.random() * g.W, Math.random() * g.H, 2, 0, Math.PI * 2); c.fill();
-                    }
+                label: name,
+                rect: { x: px - hitR, y: py - hitR, w: hitR * 2, h: hitR * 2 },
+                fn: () => {
+                    const targetOffX = -(t.cx * msx - g.W / 2 / scale);
+                    const targetOffY = -(t.cy * msy - g.H / 2 / scale);
+                    this._flatMapTargetOffX = targetOffX;
+                    this._flatMapTargetOffY = targetOffY;
+                    this._flatMapTargetZoom = Math.min(4, this._flatMapZoom * 1.5);
+                    g._clickTerr(i);
                 }
-            }
+            });
         }
 
         // ── Zoom controls (bottom-right) ──
@@ -2831,6 +3260,7 @@ export class Renderer3D extends Renderer {
             c.fillText(b.label, x + btnSize / 2, y + btnSize / 2);
 
             g.btns.push({
+                label: b.action,
                 rect: { x, y, w: btnSize, h: btnSize },
                 fn: () => this.handleFlatMapZoomAction(b.action)
             });
@@ -2991,7 +3421,7 @@ export class Renderer3D extends Renderer {
             c.beginPath(); c.roundRect(saveX, btnY, saveW, btnH, 5); c.stroke();
             c.fillStyle = 'rgba(134,239,172,0.9)'; c.textAlign = 'center'; c.textBaseline = 'middle';
             c.fillText(saveLabel, saveX + saveW / 2, btnY + btnH / 2);
-            g.btns.push({ rect: { x: saveX, y: btnY, w: saveW, h: btnH }, fn: () => g.saveGame() });
+            g.btns.push({ label: 'Save', rect: { x: saveX, y: btnY, w: saveW, h: btnH }, fn: () => g.saveGame() });
 
             // Menu button
             c.fillStyle = 'rgba(255,255,255,0.08)';
@@ -3000,7 +3430,7 @@ export class Renderer3D extends Renderer {
             c.beginPath(); c.roundRect(menuX, btnY, menuW, btnH, 5); c.stroke();
             c.fillStyle = 'rgba(255,255,255,0.8)'; c.textAlign = 'center'; c.textBaseline = 'middle';
             c.fillText(menuLabel, menuX + menuW / 2, btnY + btnH / 2);
-            g.btns.push({ rect: { x: menuX, y: btnY, w: menuW, h: btnH }, fn: () => { g.state = 'menu'; g.sfx?.click(); } });
+            g.btns.push({ label: 'Menu', rect: { x: menuX, y: btnY, w: menuW, h: btnH }, fn: () => { g.state = 'menu'; g.sfx?.click(); } });
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -3042,7 +3472,7 @@ export class Renderer3D extends Renderer {
             c.textAlign = 'center'; c.textBaseline = 'middle';
             c.fillStyle = b.color;
             c.fillText(b.label, bx + bw / 2, by + bh / 2);
-            g.btns.push({ rect: { x: bx, y: by, w: bw, h: bh }, fn: () => { g.state = b.state; } });
+            g.btns.push({ label: b.label, rect: { x: bx, y: by, w: bw, h: bh }, fn: () => { g.state = b.state; } });
         }
 
         // Music toggle — far left in bottom bar
@@ -3055,7 +3485,7 @@ export class Renderer3D extends Renderer {
         c.beginPath(); c.roundRect(mBtnX, mBtnY, 38, bh, 6); c.stroke();
         c.font = '16px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
         c.fillText(musicOn ? '🎵' : '🔇', mBtnX + 19, mBtnY + bh / 2);
-        g.btns.push({ rect: { x: mBtnX, y: mBtnY, w: 38, h: bh }, fn: () => {
+        g.btns.push({ label: 'Music', rect: { x: mBtnX, y: mBtnY, w: 38, h: bh }, fn: () => {
             if (g.music) {
                 if (g.music._playing) g.music.stop();
                 else { g.music.init(g.sfx?.ctx); g.music.setRegion('map'); }
@@ -3072,7 +3502,7 @@ export class Renderer3D extends Renderer {
         c.textAlign = 'center'; c.textBaseline = 'middle';
         c.fillStyle = 'rgba(255,200,200,0.95)';
         c.fillText('⏭ End Turn', etX + etW / 2, etY + bh / 2);
-        g.btns.push({ rect: { x: etX, y: etY, w: etW, h: bh }, fn: () => { g.endTurn(); } });
+        g.btns.push({ label: 'End Turn', rect: { x: etX, y: etY, w: etW, h: bh }, fn: () => { g.endTurn(); } });
 
         // ── Research progress bar (above bottom bar) ──
         if (em?.currentResearch) {
@@ -3324,13 +3754,18 @@ export class Renderer3D extends Renderer {
         c.font = 'bold 14px "Segoe UI", sans-serif';
         c.textAlign = 'center'; c.textBaseline = 'middle';
         c.fillText('⚔ Conquer', stX + stW / 2, stY + stH / 2);
-        if (startEnabled) {
-            g.btns.push({
-                rect: { x: stX, y: stY, w: stW, h: stH },
-                label: 'start',
-                fn: () => { g._startCountryGame(cs.selCid); g.sfx.click(); }
-            });
-        }
+        g.btns.push({
+            rect: { x: stX, y: stY, w: stW, h: stH },
+            label: 'Conquer',
+            fn: () => {
+                if (startEnabled) {
+                    g._startCountryGame(cs.selCid);
+                    g.sfx.click();
+                } else {
+                    g.sfx.error();
+                }
+            }
+        });
 
         // ── MINI MAP PREVIEW when a country is selected ──
         if (cs.selCid >= 0) {
@@ -3366,6 +3801,10 @@ export class Renderer3D extends Renderer {
     _empSelKey(e) {
         if (!this._cs) return;
         const cs = this._cs;
+        // Auto-enable typing on any printable key
+        if (!cs._typing && e.key.length === 1) {
+            cs._typing = true;
+        }
         if (!cs._typing) return;
         if (e.key === 'Backspace') {
             cs.filter = cs.filter.slice(0, -1);
@@ -3375,12 +3814,284 @@ export class Renderer3D extends Renderer {
             cs._typing = false;
         } else if (e.key === 'Enter') {
             cs._typing = false;
-            if (cs.selCid >= 0) this.g._startCountryGame(cs.selCid);
+            if (cs.selected >= 0) this.g._startCountryGame(cs.selected);
         } else if (e.key.length === 1 && cs.filter.length < 30) {
             cs.filter += e.key;
             cs.scroll = 0;
             e.preventDefault();
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  COUNTRY SELECT — searchable list of 195 countries
+    // ═══════════════════════════════════════════════════════════
+    _countrySelect() {
+        const c = this.ctx;
+        const g = this.g;
+        const { W, H } = g;
+
+        // Initialize state
+        if (!g._countrySelectState) {
+            g._countrySelectState = { filter: '', region: 'all', scroll: 0, selected: -1, _typing: true };
+        }
+        const cs = g._countrySelectState;
+        // Auto-enable typing mode on first visit
+        if (cs._typing === undefined || cs._typing === false) {
+            // Keep whatever state it was in
+        }
+
+        // Dark atmospheric background
+        const bgGr = c.createRadialGradient(W/2, H/2, 50, W/2, H/2, W * 0.8);
+        bgGr.addColorStop(0, '#1a0f08'); bgGr.addColorStop(1, '#080402');
+        c.fillStyle = bgGr; c.fillRect(0, 0, W, H);
+
+        // Floating particles
+        for (let i = 0; i < 20; i++) {
+            const px = (Math.sin(this.time * 0.003 + i * 3.7) * 0.5 + 0.5) * W;
+            const py = H - ((this.time * 0.15 + i * 61) % H);
+            const sz = 0.8 + Math.sin(this.time * 0.012 + i) * 0.5;
+            const alpha = 0.06 + Math.sin(this.time * 0.007 + i * 0.8) * 0.04;
+            c.fillStyle = `rgba(100,180,255,${alpha})`;
+            c.beginPath(); c.arc(px, py, sz, 0, Math.PI * 2); c.fill();
+        }
+
+        c.textAlign = 'center'; c.textBaseline = 'middle';
+
+        // Title glow
+        const titleGlow = 10 + Math.sin(this.time * 0.03) * 5;
+        c.save();
+        c.shadowColor = 'rgba(30,136,229,0.6)'; c.shadowBlur = titleGlow;
+        c.fillStyle = '#42A5F5'; c.font = 'bold 34px Georgia, serif';
+        c.fillText('\uD83C\uDF0D SELECT YOUR NATION', W / 2, 28);
+        c.restore();
+
+        c.fillStyle = '#8eacc8'; c.font = 'italic 12px Georgia, serif';
+        c.fillText('Choose a country to lead in World Conquest mode', W / 2, 52);
+
+        // ── BACK BUTTON ──
+        const bbW = 80, bbH = 30, bbX = 15, bbY = 15;
+        const backBtn = { label: 'Back', fn: () => { g.state = 'difficulty'; g.sfx.click(); } };
+        backBtn.rect = { x: bbX, y: bbY, w: bbW, h: bbH };
+        g.btns.push(backBtn);
+        this._rr(c, bbX, bbY, bbW, bbH, 8); c.fillStyle = 'rgba(184,154,106,0.15)'; c.fill();
+        c.strokeStyle = '#b7950b'; c.lineWidth = 1.5;
+        this._rr(c, bbX, bbY, bbW, bbH, 8); c.stroke();
+        c.fillStyle = '#f5e6c8'; c.font = 'bold 12px "Segoe UI", sans-serif';
+        c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.fillText('\u2B05 Back', bbX + bbW / 2, bbY + bbH / 2);
+
+        // ── SEARCH BAR ──
+        const searchW = Math.min(400, W - 120);
+        const searchH = 36;
+        const searchX = (W - searchW) / 2;
+        const searchY = 68;
+
+        // Search box background
+        this._rr(c, searchX, searchY, searchW, searchH, 8);
+        c.fillStyle = 'rgba(30,20,12,0.85)'; c.fill();
+        c.strokeStyle = cs._typing ? '#42A5F5' : 'rgba(184,154,106,0.4)';
+        c.lineWidth = cs._typing ? 2 : 1;
+        this._rr(c, searchX, searchY, searchW, searchH, 8); c.stroke();
+
+        // Search icon and text
+        c.textAlign = 'left'; c.textBaseline = 'middle';
+        c.fillStyle = '#b89a6a'; c.font = '14px serif';
+        c.fillText('\uD83D\uDD0D', searchX + 10, searchY + searchH / 2);
+        c.fillStyle = '#f5e6c8'; c.font = '13px "Segoe UI", sans-serif';
+        const filterDisplay = cs.filter || 'Search countries...';
+        c.fillStyle = cs.filter ? '#f5e6c8' : '#6a5a4a';
+        c.fillText(filterDisplay, searchX + 35, searchY + searchH / 2);
+
+        // Blinking cursor
+        if (cs._typing && Math.floor(this.time / 30) % 2 === 0) {
+            const tw = c.measureText(filterDisplay).width;
+            c.fillStyle = '#42A5F5';
+            c.fillRect(searchX + 35 + tw + 2, searchY + 8, 2, searchH - 16);
+        }
+
+        // Click area for search box
+        const searchBtn = { label: 'search', fn: () => { cs._typing = true; } };
+        searchBtn.rect = { x: searchX, y: searchY, w: searchW, h: searchH };
+        g.btns.push(searchBtn);
+
+        // Typing state for keyboard handler
+        this._cs = cs;
+        cs._typing = cs._typing || false;
+
+        // ── REGION TABS ──
+        const tabY = searchY + searchH + 10;
+        const tabCount = REGION_TABS.length;
+        const tabW = Math.min(100, (W - 40) / tabCount);
+        const totalTabW = tabW * tabCount;
+        const tabStartX = (W - totalTabW) / 2;
+
+        for (let i = 0; i < REGION_TABS.length; i++) {
+            const tab = REGION_TABS[i];
+            const tx = tabStartX + i * tabW;
+            const isActive = cs.region === tab.key;
+            const tabHover = g.input.hoverX >= tx && g.input.hoverX <= tx + tabW &&
+                             g.input.hoverY >= tabY && g.input.hoverY <= tabY + 30;
+
+            this._rr(c, tx, tabY, tabW - 4, 30, 6);
+            c.fillStyle = isActive ? tab.color + '40' : (tabHover ? 'rgba(184,154,106,0.1)' : 'rgba(30,18,10,0.5)');
+            c.fill();
+            c.strokeStyle = isActive ? tab.color : 'rgba(184,154,106,0.2)';
+            c.lineWidth = isActive ? 1.5 : 0.5;
+            this._rr(c, tx, tabY, tabW - 4, 30, 6); c.stroke();
+
+            c.fillStyle = isActive ? tab.color : '#8a7a6a';
+            c.font = (isActive ? 'bold ' : '') + '11px "Segoe UI", sans-serif';
+            c.textAlign = 'center'; c.textBaseline = 'middle';
+            c.fillText(tab.label, tx + (tabW - 4) / 2, tabY + 15);
+
+            // Register tab button
+            const tabBtn = { label: tab.key, fn: () => {
+                cs.region = tab.key;
+                cs.scroll = 0;
+                cs.selected = -1;
+                g.sfx.click();
+            }};
+            tabBtn.rect = { x: tx, y: tabY, w: tabW - 4, h: 30 };
+            g.btns.push(tabBtn);
+        }
+
+        // ── FILTERED COUNTRY LIST ──
+        const listTop = tabY + 40;
+        const listBottom = H - 60;
+        const listH = listBottom - listTop;
+
+        let filtered;
+        if (cs.region === 'all') {
+            filtered = cs.filter ? searchCountries(cs.filter) : COUNTRIES;
+        } else {
+            let byRegion = getCountriesByContinent(
+                cs.region === 'europe' ? 'Europe' :
+                cs.region === 'asia' ? 'Asia' :
+                cs.region === 'africa' ? 'Africa' :
+                cs.region === 'americas' ? 'Americas' :
+                cs.region === 'oceania' ? 'Oceania' :
+                cs.region === 'middle_east' ? 'Middle East' : 'All'
+            );
+            if (cs.filter) {
+                const q = cs.filter.toLowerCase();
+                byRegion = byRegion.filter(co => co.name.toLowerCase().includes(q) || co.code.toLowerCase().includes(q));
+            }
+            filtered = byRegion;
+        }
+
+        // Scrollable area clipping
+        c.save();
+        c.beginPath();
+        c.rect(10, listTop, W - 20, listH);
+        c.clip();
+
+        const rowH = 36;
+        const maxScroll = Math.max(0, filtered.length * rowH - listH);
+        cs.scroll = Math.max(0, Math.min(cs.scroll, maxScroll));
+
+        // Mouse wheel scroll
+        if (g.input._wheelDelta) {
+            cs.scroll += g.input._wheelDelta * 30;
+            cs.scroll = Math.max(0, Math.min(cs.scroll, maxScroll));
+            g.input._wheelDelta = 0;
+        }
+
+        for (let i = 0; i < filtered.length; i++) {
+            const co = filtered[i];
+            const ry = listTop + i * rowH - cs.scroll;
+
+            // Skip if outside visible area
+            if (ry + rowH < listTop || ry > listBottom) continue;
+
+            const isSelected = cs.selected === co.id;
+            const rowHover = g.input.hoverX >= 10 && g.input.hoverX <= W - 10 &&
+                             g.input.hoverY >= ry && g.input.hoverY <= ry + rowH;
+
+            // Row background
+            if (isSelected) {
+                c.fillStyle = 'rgba(30,136,229,0.25)';
+                c.fillRect(12, ry, W - 24, rowH - 2);
+                c.strokeStyle = '#42A5F5'; c.lineWidth = 1;
+                c.strokeRect(12, ry, W - 24, rowH - 2);
+            } else if (rowHover) {
+                c.fillStyle = 'rgba(184,154,106,0.08)';
+                c.fillRect(12, ry, W - 24, rowH - 2);
+            } else if (i % 2 === 0) {
+                c.fillStyle = 'rgba(20,12,8,0.3)';
+                c.fillRect(12, ry, W - 24, rowH - 2);
+            }
+
+            // Flag emoji
+            c.font = '18px serif'; c.textAlign = 'left'; c.textBaseline = 'middle';
+            c.fillText(co.flag, 20, ry + rowH / 2);
+
+            // Country name
+            c.fillStyle = isSelected ? '#42A5F5' : '#f5e6c8';
+            c.font = (isSelected ? 'bold ' : '') + '12px "Segoe UI", sans-serif';
+            c.fillText(co.name, 48, ry + rowH / 2);
+
+            // Continent indicator
+            c.fillStyle = '#6a5a4a'; c.font = '10px "Segoe UI", sans-serif';
+            c.textAlign = 'right';
+            c.fillText(co.continent, W - 20, ry + rowH / 2);
+
+            // Register row button
+            const rowBtn = { label: 'country_' + co.id, fn: () => {
+                cs.selected = co.id;
+                g.sfx.click();
+            }};
+            rowBtn.rect = { x: 10, y: ry, w: W - 20, h: rowH - 2 };
+            g.btns.push(rowBtn);
+        }
+
+        // Scrollbar
+        if (filtered.length * rowH > listH) {
+            const sbH = Math.max(20, listH * (listH / (filtered.length * rowH)));
+            const sbY = listTop + (cs.scroll / maxScroll) * (listH - sbH);
+            c.fillStyle = 'rgba(184,154,106,0.3)';
+            this._rr(c, W - 18, sbY, 6, sbH, 3); c.fill();
+        }
+
+        c.restore();
+
+        // ── BOTTOM: Start Conquest button ──
+        const startW = 200, startH = 40;
+        const startX = W / 2 - startW / 2;
+        const startY = H - 50;
+        const canStart = cs.selected >= 0;
+
+        if (canStart) {
+            const startGr = c.createLinearGradient(startX, startY, startX, startY + startH);
+            startGr.addColorStop(0, '#1E88E5'); startGr.addColorStop(1, '#1565C0');
+            this._rr(c, startX, startY, startW, startH, 10); c.fillStyle = startGr; c.fill();
+            c.strokeStyle = '#42A5F5'; c.lineWidth = 2;
+            this._rr(c, startX, startY, startW, startH, 10); c.stroke();
+            c.fillStyle = '#FFFFFF'; c.font = 'bold 16px "Segoe UI", sans-serif';
+            c.textAlign = 'center'; c.textBaseline = 'middle';
+            c.fillText('\uD83C\uDF0D Start Conquest', startX + startW / 2, startY + startH / 2);
+
+            const startBtn = { label: 'startConquest', fn: () => {
+                if (cs.selected >= 0) {
+                    g._startCountryGame(cs.selected);
+                    g.sfx.click();
+                }
+            }};
+            startBtn.rect = { x: startX, y: startY, w: startW, h: startH };
+            g.btns.push(startBtn);
+        } else {
+            this._rr(c, startX, startY, startW, startH, 10);
+            c.fillStyle = 'rgba(30,20,12,0.5)'; c.fill();
+            c.strokeStyle = 'rgba(184,154,106,0.2)'; c.lineWidth = 1;
+            this._rr(c, startX, startY, startW, startH, 10); c.stroke();
+            c.fillStyle = '#6a5a4a'; c.font = 'bold 14px "Segoe UI", sans-serif';
+            c.textAlign = 'center'; c.textBaseline = 'middle';
+            c.fillText('Select a country first', startX + startW / 2, startY + startH / 2);
+        }
+
+        // Counter
+        c.fillStyle = '#6a5a4a'; c.font = '11px "Segoe UI", sans-serif';
+        c.textAlign = 'left';
+        c.fillText(`${filtered.length} countries`, 15, startY + startH / 2);
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -3435,6 +4146,63 @@ export class Renderer3D extends Renderer {
     }
 
     // ═══════════════════════════════════════════════════════════
+    //  OVERRIDE: _drawTerritoryView — clear canvas and draw minimap/HUD for dungeon
+    // ═══════════════════════════════════════════════════════════
+    _drawTerritoryView() {
+        const c = this.ctx, g = this.g;
+        if (this._view === 'interior') {
+            const W = g.W, H = g.H;
+            
+            // Clear the 2D UI canvas so the 3D scene shows through
+            c.clearRect(0, 0, W, H);
+            
+            // ── Draw Dungeon HUD (lazy-loaded) ──
+            if (this._dungeonCombatMod) {
+                this._dungeonCombatMod.drawDungeonHUD(this.ctx, this.g, this._dungeonData, this._playerHP, this._playerMaxHP, this._playerDead);
+            }
+            
+            // Draw Minimap
+            this._drawMinimap();
+            
+            // Reset buttons list for this screen
+            g.btns = [];
+            
+            // Draw BACK button
+            const backW = 80, backH = 36, backX = 8, backY = 9;
+            this._rr(c, backX, backY, backW, backH, 8);
+            c.fillStyle = 'rgba(200,60,60,0.9)'; c.fill();
+            c.strokeStyle = '#ff6b6b'; c.lineWidth = 2;
+            this._rr(c, backX, backY, backW, backH, 8); c.stroke();
+            c.textAlign = 'center'; c.textBaseline = 'middle';
+            c.fillStyle = '#fff'; c.font = 'bold 14px "Segoe UI", sans-serif';
+            c.fillText('\u2B05 BACK', backX + backW/2, backY + backH/2);
+            g.btns.push({
+                rect: { x: backX, y: backY, w: backW, h: backH },
+                fn: () => { this._exitInterior(); g.sfx.click(); }
+            });
+            
+            // Title text (Dungeon name/type)
+            const tv = g._terrView;
+            if (tv) {
+                const country = g._countryMode ? COUNTRIES[tv.tid] : null;
+                const territoryName = country ? country.name : (g._activeTerritories?.[tv.tid] || g._T(tv.tid))?.name;
+                c.textAlign = 'left'; c.textBaseline = 'middle';
+                c.fillStyle = '#ffd700'; c.font = 'bold 18px Georgia, serif';
+                c.fillText(territoryName ? `${territoryName} Dungeon` : 'Dungeon', 100, 27);
+            }
+            
+            // Draw Log Panel
+            this._logPanel();
+            
+            // Draw notification overlays
+            this._drawNotifications();
+        } else {
+            c.clearRect(0, 0, g.W, g.H);
+            drawTerritoryInterior(c, g);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
     //  OVERRIDE: MAIN RENDER LOOP
     // ═══════════════════════════════════════════════════════════
     render() {
@@ -3455,7 +4223,8 @@ export class Renderer3D extends Renderer {
                 const terr = g._terrView ? (g._activeTerritories?.[g._terrView.tid]) : null;
                 const continent = terr ? terr.continent : null;
                 if (g.state === 'menu') g.music.setRegion('menu');
-                else if (g.state === 'empireSelect') g.music.setRegion('select');
+                else if (g.state === 'modeSelect' || g.state === 'difficulty') g.music.setRegion('menu');
+                else if (g.state === 'empireSelect' || g.state === 'countrySelect') g.music.setRegion('select');
                 else if (g.state === 'territory') g.music.setRegion('territory', continent);
                 else if (g.state === 'battle' || g.state === 'combat') g.music.setRegion('battle');
                 else if (g.state === 'victory') g.music.setRegion('victory');
@@ -3496,10 +4265,6 @@ export class Renderer3D extends Renderer {
                 this._drawFlatMapToolbar();
                 this._worldMiniHUD();
                 this._drawLikeButton();
-            } else if (g.state === 'territory') {
-                // ── 2D TERRITORY INTERIOR VIEW ──
-                c.clearRect(0, 0, g.W, g.H);
-                drawTerritoryInterior(c, g);
             } else if (show3D) {
                 if (!this._3dReady) {
                     // Loading screen
@@ -3543,6 +4308,8 @@ export class Renderer3D extends Renderer {
                 else if (g.state === 'difficulty') this._difficultyScreen();
                 else if (g.state === 'onlineLobby') this._onlineLobbyScreen();
                 else if (g.state === 'empireSelect') this._empSel();
+                else if (g.state === 'modeSelect') this._modeSelect();
+                else if (g.state === 'countrySelect') this._countrySelect();
                 else if (g.state === 'gameover') this._defeat();
                 else if (g.state === 'victory') this._victory();
                 else if (g.state === 'techtree') drawTechTree(this.ctx, g);
@@ -3650,6 +4417,7 @@ export class Renderer3D extends Renderer {
     //  OVERRIDE: addCaptureAnim
     // ═══════════════════════════════════════════════════════════
     addCaptureAnim(tid, newColor, oldColor) {
+        if (this.g._countryMode || !_terrCenters[tid]) return;
         this._rebuildStructure(tid);
         if (newColor) {
             const c = new Color(newColor);

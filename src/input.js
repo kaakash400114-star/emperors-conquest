@@ -67,13 +67,15 @@ export class Input {
         window.addEventListener('keydown', (e) => {
             this._keyBuffer.push(e.key);
             // Route keyboard to renderer for country search
-            if (this.game && this.game.renderer && this.game.renderer._empSelKey && this.game.state === 'empireSelect') {
+            if (this.game && this.game.renderer && this.game.renderer._empSelKey &&
+                (this.game.state === 'empireSelect' || this.game.state === 'countrySelect')) {
                 this.game.renderer._empSelKey(e);
             }
         });
         // Mouse wheel for country list scrolling
         window.addEventListener('wheel', (e) => {
-            if (this.game && this.game.state === 'empireSelect' && this.game.renderer._cs) {
+            const st = this.game && this.game.state;
+            if (this.game && (st === 'empireSelect' || st === 'countrySelect') && this.game.renderer._cs) {
                 this.game.renderer._cs.scroll += e.deltaY * 0.5;
                 e.preventDefault();
             }

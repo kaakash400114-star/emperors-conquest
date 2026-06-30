@@ -835,5 +835,145 @@ export const TERRITORY_STORIES = {
 };
 
 export const T = (id) => TERRITORIES[id];
-export const E = (id) => EMPIRES[id];
+export const E = (id) => EMPIRES[id] || {
+  id: id,
+  name: 'Neutral',
+  color: '#888888',
+  icon: '🏳️',
+  tids: [],
+  coins: 0,
+  troops: 0,
+  techs: new Set(),
+  weapons: new Set(),
+  era: 'bronze',
+  personality: 'neutral',
+  alliances: {},
+  trades: {},
+  spies: {},
+  diplomacy: {},
+  stats: { kills: 0, conquered: 0, coinsEarned: 0, totalTroops: 0, xp: 0, level: 1 }
+};
 export const adj = (a,b) => TERRITORIES[a].adj.includes(b);
+
+
+// ═══════════════════════════════════════════════════════════
+// GAME CONFIGURATION & NEW DATA EXPORTS
+// ═══════════════════════════════════════════════════════════
+
+export const DIFFICULTY = [
+  { key:'easy', label:'Easy', desc:'Relaxed gameplay with bonus income', color:'#2ECC71', icon:'🌱', coinMult:0.5, troopMult:0.7, aggression:0.3 },
+  { key:'normal', label:'Normal', desc:'Balanced challenge for experienced players', color:'#3498DB', icon:'⚔️', coinMult:1.0, troopMult:1.0, aggression:0.5 },
+  { key:'hard', label:'Hard', desc:'Tough AI with stronger economies', color:'#E74C3C', icon:'🔥', coinMult:1.5, troopMult:1.3, aggression:0.8 },
+  { key:'impossible', label:'Impossible', desc:'Brutal — only for the greatest emperors', color:'#8B0000', icon:'💀', coinMult:2.0, troopMult:1.8, aggression:1.0 }
+];
+
+export const REGION_TABS = [
+  { key:'all', label:'All', color:'#D4AF37' },
+  { key:'europe', label:'Europe', color:'#3498DB' },
+  { key:'asia', label:'Asia', color:'#E74C3C' },
+  { key:'africa', label:'Africa', color:'#F39C12' },
+  { key:'americas', label:'Americas', color:'#2ECC71' },
+  { key:'oceania', label:'Oceania', color:'#9B59B6' },
+  { key:'middle_east', label:'Middle East', color:'#E67E22' }
+];
+
+export const AI_COUNTS = { offline: 3, online: 1 };
+
+export const PLAYER_COLOR = '#D4AF37';
+
+export const AI_COLORS = ['#e67e22','#c0392b','#7f8c8d','#16a085','#2980b9','#e74c3c','#444444','#cc0000','#f1c40f','#dc143c','#228b22','#8b4513','#9400d3','#ffd700'];
+
+export const BUILDINGS = [
+  { key:'farm', name:'Farm', cost:8, time:3, effects:{income:2} },
+  { key:'barracks', name:'Barracks', cost:15, time:5, effects:{troopBonus:1} },
+  { key:'wall', name:'Wall', cost:12, time:4, effects:{defense:2} },
+  { key:'market', name:'Market', cost:10, time:3, effects:{trade:1} },
+  { key:'watchtower', name:'Watchtower', cost:10, time:4, effects:{vision:2} }
+];
+
+export const SPECIALIZATIONS = [
+  { key:'military', name:'Military HQ', cost:20, effects:{attack:2,defense:1} },
+  { key:'economic', name:'Economic Hub', cost:20, effects:{income:5} },
+  { key:'cultural', name:'Cultural Center', cost:25, effects:{loyalty:3} },
+  { key:'fortress', name:'Fortress', cost:18, effects:{defense:4} }
+];
+
+export const TERRAIN_UPGRADES = [
+  { key:'road', name:'Road', cost:8, terrain:'land' },
+  { key:'bridge', name:'Bridge', cost:12, terrain:'river' },
+  { key:'fort', name:'Fort', cost:15, terrain:'hill' },
+  { key:'harbor', name:'Harbor', cost:20, terrain:'coast' },
+  { key:'canal', name:'Canal', cost:25, terrain:'water_adjacent' }
+];
+
+export const ACHIEVEMENTS = [
+  { key:'first_conquest', name:'First Conquest', condition:'conquer >= 1', reward:{coin:50} },
+  { key:'defender', name:'Defender', condition:'defend >= 3', reward:{coin:30} },
+  { key:'rich', name:'Rich', condition:'coin >= 500', reward:{pop:50} },
+  { key:'populated', name:'Populated', condition:'pop >= 200', reward:{income:3} },
+  { key:'fortified', name:'Fortified', condition:'buildings contains wall', reward:{defense:1} },
+  { key:'connected', name:'Connected', condition:'roads >= 3', reward:{coin:20} }
+];
+
+export const WONDERS = [
+  { key:'colosseum', name:'Colosseum', cost:100, time:20, effects:{morale:5,loyalty:3} },
+  { key:'library', name:'Great Library', cost:120, time:25, effects:{research_speed:2} },
+  { key:'temple', name:'Grand Temple', cost:150, time:30, effects:{loyalty:5,income:3} },
+  { key:'palace', name:'Royal Palace', cost:200, time:35, effects:{all:1} },
+  { key:'trade_hub', name:'Trade Hub', cost:80, time:15, effects:{income:5,trade:2} }
+];
+
+export const TERRITORY_RESOURCES = {};  // populated per territory
+
+export const SPY_TYPES = [
+  { key:'intel', name:'Intel Agent', cost:15 },
+  { key:'sabotage', name:'Saboteur', cost:25 },
+  { key:'incite', name:'Inciter', cost:30 },
+  { key:'bribe', name:'Briber', cost:20 }
+];
+
+export const MERCENARIES = [
+  { key:'militia', name:'Militia', cost:10, upkeep:2, troops:5 },
+  { key:'professional', name:'Professional', cost:25, upkeep:5, troops:12 },
+  { key:'elite', name:'Elite Guard', cost:50, upkeep:10, troops:25 },
+  { key:'legion', name:'Legion', cost:100, upkeep:20, troops:50 }
+];
+
+export const SHIPS = [
+  { key:'galley', name:'Galley', cost:20, terrain:'coast' },
+  { key:'warship', name:'Warship', cost:50, terrain:'coast' },
+  { key:'transport', name:'Transport', cost:30, terrain:'coast' }
+];
+
+export const ALLIANCE_WAR = { BETRAYAL_PENALTY: 50, ALLIANCE_ATTACK_BONUS: 1.5 };
+
+export const DYNAMIC_EVENTS = ['earthquake','migration','revolt','caravan','barbarians','plague','harvest','comet','naval_storm'];
+
+// Flag emojis for each territory
+export const COUNTRY_FLAGS = {
+  0: '🇵🇰',   // Indus Valley → Pakistan
+  1: '🇮🇳',   // Ganges → India
+  2: '🇮🇷',   // Persia → Iran
+  3: '🇮🇶',   // Mesopotamia → Iraq
+  4: '🇸🇦',   // Arabia → Saudi Arabia
+  5: '🇪🇬',   // Egypt
+  6: '🇹🇷',   // Anatolia → Turkey
+  7: '🇬🇷',   // Greece
+  8: '🇮🇹',   // Italia
+  9: '🇫🇷',   // Gaul → France
+  10: '🇪🇸',  // Hispania → Spain
+  11: '🇬🇧',  // Britannia
+  12: '🇩🇪',  // Germania
+  13: '🇸🇪',  // Scandinavia
+  14: '🇺🇦',  // Eastern Europe → Ukraine
+  15: '🇷🇸',  // Balkans → Serbia
+  16: '🇹🇳',  // North Africa → Tunisia
+  17: '🇯🇵',  // Japan
+  18: '🇨🇳',  // China
+  19: '🇹🇭',  // Southeast Asia → Thailand
+  20: '🇳🇬',  // Sub-Saharan Africa → Nigeria
+  21: '🇰🇿',  // Central Asia → Kazakhstan
+  22: '🇷🇺',  // Siberia → Russia
+  23: '🇪🇹',  // Ethiopia
+  24: '🇰🇷',  // Korea
+};
